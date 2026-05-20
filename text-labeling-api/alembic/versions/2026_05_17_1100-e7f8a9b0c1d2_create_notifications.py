@@ -15,7 +15,7 @@ down_revision: Union[str, None] = 'd1e2f3a4b5c6'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-notification_type = sa.Enum(
+notification_type = postgresql.ENUM(
     'TASK_ASSIGNED',
     'TASK_REJECTED',
     'TASK_APPROVED',
@@ -25,6 +25,7 @@ notification_type = sa.Enum(
     'ANNOTATION_MILESTONE',
     'EXPORT_READY',
     name='notification_type',
+    create_type=False,
 )
 
 
