@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($body = '{\"email\":\"admin@textlabeling.com\",\"password\":\"Admin@123\"}'; $resp = Invoke-WebRequest -Uri \"http://localhost:8000/api/v1/auth/login\" -Method POST -Body $body -ContentType \"application/json\" -UseBasicParsing; $token = \\($resp.Content | ConvertFrom-Json\\).access_token; Write-Host \"Token: $\\($token.Substring\\(0,20\\)\\)...\"; $resp2 = Invoke-WebRequest -Uri \"http://localhost:8000/api/v1/projects?page_size=2\" -Headers @{\"Authorization\"=\"Bearer $token\"} -UseBasicParsing; Write-Host $resp2.Content)",
+      "Bash(xargs grep -l \"assignment\\\\|Assignment\\\\|ViewAssignment\\\\|EditAssignment\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Admin\\\\text-labeling-api\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(npx tsc *)",
+      "Bash(find \"c:\\\\Users\\\\Admin\\\\text-labeling-frontend\\\\src\" -type f \\\\\\( -name \"*.css\" -o -name \"*styles*\" -o -name \"*theme*\" \\\\\\) | head -20)",
+      "Bash(cd /c/Users/Admin/text-labeling-frontend/src && find . -name \"*.tsx\" -type f | head -20)",
+      "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")",
+      "Read(//c/Users/Admin/text-labeling-frontend/**)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(Get-ChildItem -Recurse -Directory)",
+      "Bash(Select-Object FullName)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Admin\\\\text-labeling-api\\\\app\\\\api\\\\v1\\\\endpoints\" -File)",
+      "Bash(Select-Object Name)",
+      "Bash(Get-ChildItem -Path src\\\\pages -Name)",
+      "Bash(cd /mnt/c/Users/Admin/text-labeling-frontend && npx tsc --noEmit --project tsconfig.app.json 2>&1 | head -60)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Admin\\\\text-labeling-frontend\\\\src\" -Recurse -Force)",
+      "Bash(ls -la \"c:\\\\Users\\\\Admin\")"
+    ]
+  }
+}

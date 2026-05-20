@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  # ===== PostgreSQL =====
+  db:
+    image: postgres:16-alpine
+    container_name: tlp_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: text_labeling_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ===== FastAPI Backend =====
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tlp_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/text_labeling_db
+      APP_ENV: development
+      DEBUG: "true"
+      JWT_SECRET_KEY: dev-secret-key-change-in-production-min-32-chars!!
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app  # hot reload in dev
+
+volumes:
+  pgdata:
