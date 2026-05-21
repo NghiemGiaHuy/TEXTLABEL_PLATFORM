@@ -6,6 +6,46 @@ import { Eye, EyeOff, Tag, AlertCircle, LogIn } from 'lucide-react';
 import { authApi } from '../api/authApi';
 import { useAuthStore } from '../store/authStore';
 
+type LoginApiError = {
+  response?: {
+    status?: number;
+    data?: {
+      message?: string;
+      detail?: string;
+    };
+  };
+};
+
+const LOGIN_ERROR_MESSAGES = {
+  invalid: 'Email ho\u1eb7c m\u1eadt kh\u1ea9u kh\u00f4ng \u0111\u00fang',
+  locked: 'T\u00e0i kho\u1ea3n \u0111ang b\u1ecb kh\u00f3a. Vui l\u00f2ng th\u1eed l\u1ea1i sau.',
+  network: 'Kh\u00f4ng k\u1ebft n\u1ed1i \u0111\u01b0\u1ee3c API. Ki\u1ec3m tra backend, CORS ho\u1eb7c VITE_API_URL.',
+  server: 'M\u00e1y ch\u1ee7 \u0111ang l\u1ed7i. Vui l\u00f2ng th\u1eed l\u1ea1i sau.',
+  generic: '\u0110\u0103ng nh\u1eadp th\u1ea5t b\u1ea1i. Vui l\u00f2ng th\u1eed l\u1ea1i.',
+};
+
+function getLoginErrorMessage(error: unknown) {
+  const response = (error as LoginApiError).response;
+
+  if (!response) {
+    return LOGIN_ERROR_MESSAGES.network;
+  }
+
+  if (response.status === 401) {
+    return LOGIN_ERROR_MESSAGES.invalid;
+  }
+
+  if (response.status === 423) {
+    return response.data?.message ?? LOGIN_ERROR_MESSAGES.locked;
+  }
+
+  if (response.status && response.status >= 500) {
+    return LOGIN_ERROR_MESSAGES.server;
+  }
+
+  return response.data?.message ?? response.data?.detail ?? LOGIN_ERROR_MESSAGES.generic;
+}
+
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -30,8 +70,8 @@ export default function Login() {
       const data = await authApi.login(email, password);
       setAuth(data.access_token, data.refresh_token, data.user);
       navigate(redirectTo, { replace: true });
-    } catch {
-      setError('Email hoặc mật khẩu không đúng');
+    } catch (error) {
+      setError(getLoginErrorMessage(error));
     } finally {
       setIsLoading(false);
     }
