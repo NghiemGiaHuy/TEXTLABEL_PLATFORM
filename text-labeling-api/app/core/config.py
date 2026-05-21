@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # --- App ---
     APP_NAME: str = "Text Labeling Platform"
     APP_ENV: str = "development"
-    DEBUG: bool = True
+    DEBUG: bool = False
 
     # --- Database ---
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/text_labeling_db"

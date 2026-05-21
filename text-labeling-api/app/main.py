@@ -88,6 +88,7 @@ app.include_router(api_router)
 
 # --- Health Check ---
 @app.get("/health", tags=["Health"])
+@app.head("/health", tags=["Health"])
 async def health_check():
     return {"status": "healthy", "app": settings.APP_NAME, "env": settings.APP_ENV}
 

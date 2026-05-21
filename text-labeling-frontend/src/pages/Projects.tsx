@@ -47,7 +47,41 @@ const PRIORITY_CFG: Record<string, { label: string; color: string; bg: string }>
   normal:    { label: 'Bình thường',  color: '#ffffff', bg: '#15803d' },
 };
 
-const PROJECT_PROGRESS_REFRESH_MS = 10_000;
+const PROJECT_PROGRESS_REFRESH_MS = 30_000;
+
+type ProjectsApiError = {
+  response?: {
+    status?: number;
+    data?: {
+      detail?: string;
+      message?: string;
+    };
+  };
+};
+
+const PROJECTS_ERROR_MESSAGE =
+  'Kh\u00f4ng t\u1ea3i \u0111\u01b0\u1ee3c danh s\u00e1ch d\u1ef1 \u00e1n';
+
+const PROJECTS_STALE_WARNING =
+  'Kh\u00f4ng c\u1eadp nh\u1eadt \u0111\u01b0\u1ee3c danh s\u00e1ch d\u1ef1 \u00e1n. \u0110ang gi\u1eef d\u1eef li\u1ec7u g\u1ea7n nh\u1ea5t.';
+
+function getProjectsErrorMessage(error: unknown) {
+  const response = (error as ProjectsApiError).response;
+
+  if (!response) {
+    return 'Kh\u00f4ng k\u1ebft n\u1ed1i \u0111\u01b0\u1ee3c API. Backend c\u00f3 th\u1ec3 \u0111ang kh\u1edfi \u0111\u1ed9ng ho\u1eb7c b\u1ecb timeout.';
+  }
+
+  if (response.status === 401) {
+    return 'Phi\u00ean \u0111\u0103ng nh\u1eadp h\u1ebft h\u1ea1n. Vui l\u00f2ng \u0111\u0103ng nh\u1eadp l\u1ea1i.';
+  }
+
+  if (response.status && response.status >= 500) {
+    return 'M\u00e1y ch\u1ee7 \u0111ang l\u1ed7i khi t\u1ea3i danh s\u00e1ch d\u1ef1 \u00e1n.';
+  }
+
+  return response.data?.detail ?? response.data?.message ?? PROJECTS_ERROR_MESSAGE;
+}
 
 // ─── Main Component ─────────────────────────────────────────
 export default function Projects() {
@@ -57,6 +91,9 @@ export default function Projects() {
   const [projects, setProjects]   = useState<Project[]>([]);
   const [total, setTotal]         = useState(0);
   const [loading, setLoading]     = useState(true);
+  const [hasLoadedProjects, setHasLoadedProjects] = useState(false);
+  const [hasProjectSnapshot, setHasProjectSnapshot] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError]         = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch]       = useState('');
@@ -67,6 +104,8 @@ export default function Projects() {
   const [detailProject, setDetailProject] = useState<Project | null>(null);
   const { confirm, ConfirmDialog } = useConfirm();
   const { showToast } = useToast();
+  const requestSeq = useRef(0);
+  const hasProjectSnapshotRef = useRef(false);
 
   // Debounce search
   useEffect(() => {
@@ -76,6 +115,7 @@ export default function Projects() {
 
   const fetchProjects = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false;
+    const requestId = silent ? requestSeq.current : ++requestSeq.current;
     if (!silent) {
       setLoading(true);
       setError('');
@@ -86,18 +126,24 @@ export default function Projects() {
         status: statusFilter || undefined,
         page_size: 50,
       });
+      if (requestId !== requestSeq.current) return;
       setProjects(res.projects);
       setDetailProject((current) =>
         current ? (res.projects.find((p) => p.id === current.id) ?? current) : current
       );
       setTotal(res.total);
+      setLastUpdated(new Date());
+      hasProjectSnapshotRef.current = true;
+      setHasProjectSnapshot(true);
+      setError('');
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { detail?: string } } };
+      if (requestId !== requestSeq.current) return;
       if (!silent) {
-        setError(e.response?.data?.detail || 'Không tải được danh sách dự án');
+        setError(hasProjectSnapshotRef.current ? PROJECTS_STALE_WARNING : getProjectsErrorMessage(err));
       }
     } finally {
-      if (!silent) {
+      if (requestId === requestSeq.current && !silent) {
+        setHasLoadedProjects(true);
         setLoading(false);
       }
     }
@@ -105,8 +151,13 @@ export default function Projects() {
 
   useEffect(() => {
     fetchProjects();
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') {
+        fetchProjects({ silent: true });
+      }
+    };
     const intervalId = setInterval(
-      () => fetchProjects({ silent: true }),
+      refreshWhenVisible,
       PROJECT_PROGRESS_REFRESH_MS,
     );
     return () => clearInterval(intervalId);
@@ -120,6 +171,9 @@ export default function Projects() {
   // Stat counts
   const activeCount = projects.filter((p) => p.status === 'active').length;
   const completedCount = projects.filter((p) => p.status === 'completed').length;
+  const showInitialLoading = loading && (!hasLoadedProjects || !hasProjectSnapshot);
+  const showBlockingError = Boolean(error && !hasProjectSnapshot);
+  const showInlineWarning = Boolean(error && hasProjectSnapshot);
 
   const handleDelete = async (projectId: string) => {
     if (!await confirm('Bạn có chắc muốn xóa dự án này?', { title: 'Xóa dự án', variant: 'danger', confirmText: 'Xóa' })) return;
@@ -146,6 +200,11 @@ export default function Projects() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {lastUpdated && (
+            <span className="text-xs text-surface-400">
+              {lastUpdated.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
           <button
             onClick={() => fetchProjects()}
             disabled={loading}
@@ -166,6 +225,12 @@ export default function Projects() {
       </div>
 
       {/* ─── Stat Cards ─── */}
+      {showInlineWarning && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {error}
+        </div>
+      )}
+
       <div className="grid grid-cols-3 gap-4 mb-7">
         {[
           { label: 'Tổng dự án',     value: total,          icon: FolderKanban, iconBg: '#2563EB', iconColor: '#fff', borderColor: '#2563EB' },
@@ -232,12 +297,12 @@ export default function Projects() {
       </div>
 
       {/* ─── Content ─── */}
-      {loading ? (
+      {showInitialLoading ? (
         <div className="flex items-center justify-center py-20 text-surface-400">
           <Loader2 className="w-5 h-5 animate-spin mr-2" />
           <span className="text-sm">Đang tải...</span>
         </div>
-      ) : error ? (
+      ) : showBlockingError ? (
         <div className="flex flex-col items-center justify-center py-20">
           <AlertCircle className="w-8 h-8 text-red-400 mb-3" />
           <p className="text-sm text-surface-600 mb-3">{error}</p>

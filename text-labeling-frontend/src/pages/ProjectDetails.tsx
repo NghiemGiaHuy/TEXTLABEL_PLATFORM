@@ -103,8 +103,8 @@ function isApprovedTask(task: Pick<Task, 'status' | 'task_status'>): boolean {
 type TabKey = 'overview' | 'data_type' | 'labels' | 'datasets' | 'tasks' | 'reviews' | 'completed_tasks' | 'assign';
 type BadgeVariant = 'red' | 'green' | undefined;
 
-const PROJECT_DETAIL_REFRESH_MS = 10_000;
-const DATASET_PROGRESS_REFRESH_MS = 3_000;
+const PROJECT_DETAIL_REFRESH_MS = 30_000;
+const DATASET_PROGRESS_REFRESH_MS = 10_000;
 const PROJECT_DETAIL_TABS: TabKey[] = ['overview', 'data_type', 'datasets', 'labels', 'assign', 'tasks', 'reviews', 'completed_tasks'];
 
 function isProjectDetailTab(value: string | null): value is TabKey {
@@ -127,6 +127,7 @@ export default function ProjectDetails() {
   const [labelSets, setLabelSets] = useState<LabelSetData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const hasProjectSnapshotRef = useRef(false);
 
   // Modal states
   const [showImport, setShowImport] = useState(false);
@@ -143,20 +144,26 @@ export default function ProjectDetails() {
       setError('');
     }
     try {
-      const [proj, ds, ts, mem, ls] = await Promise.all([
+      const [proj, ds, ts, mem, ls] = await Promise.allSettled([
         projectApi.getProject(projectId),
         taskApi.getDatasets(projectId),
         taskApi.getTasks(projectId, { page_size: 100 }),
         taskApi.getMembers(projectId),
         labelApi.getLabelSets(projectId),
       ]);
-      setProject(proj);
-      setDatasets(ds.datasets);
-      setTasks(ts.tasks);
-      setMembers(mem.members);
-      setLabelSets(ls.label_sets);
+      if (proj.status === 'rejected') {
+        throw proj.reason;
+      }
+
+      setProject(proj.value);
+      hasProjectSnapshotRef.current = true;
+      if (ds.status === 'fulfilled') setDatasets(ds.value.datasets);
+      if (ts.status === 'fulfilled') setTasks(ts.value.tasks);
+      if (mem.status === 'fulfilled') setMembers(mem.value.members);
+      if (ls.status === 'fulfilled') setLabelSets(ls.value.label_sets);
+      setError('');
     } catch (err: any) {
-      if (!silent) {
+      if (!silent && !hasProjectSnapshotRef.current) {
         setError(extractErrorMessage(err, 'Failed to load project'));
       }
     } finally {
@@ -184,8 +191,13 @@ export default function ProjectDetails() {
 
   useEffect(() => {
     fetchAll();
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') {
+        fetchAll({ silent: true });
+      }
+    };
     const intervalId = setInterval(
-      () => fetchAll({ silent: true }),
+      refreshWhenVisible,
       PROJECT_DETAIL_REFRESH_MS,
     );
     return () => clearInterval(intervalId);
@@ -194,8 +206,13 @@ export default function ProjectDetails() {
   useEffect(() => {
     if (activeTab !== 'datasets') return;
     void refreshDatasets();
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshDatasets();
+      }
+    };
     const intervalId = setInterval(
-      () => void refreshDatasets(),
+      refreshWhenVisible,
       DATASET_PROGRESS_REFRESH_MS,
     );
     return () => clearInterval(intervalId);

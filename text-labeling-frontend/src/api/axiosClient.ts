@@ -113,9 +113,14 @@ axiosClient.interceptors.response.use(
       }
 
       try {
-        const { data } = await axios.post(buildApiUrl('/api/v1/auth/refresh'), {
-          refresh_token: refreshToken,
-        });
+        const { data } = await axios.post(
+          buildApiUrl('/api/v1/auth/refresh'),
+          { refresh_token: refreshToken },
+          {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: API_TIMEOUT_MS,
+          },
+        );
 
         localStorage.setItem('access_token', data.access_token);
         localStorage.setItem('refresh_token', data.refresh_token);
