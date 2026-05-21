@@ -1,14 +1,41 @@
 // src/api/axiosClient.ts
 
-import axios from 'axios';
+import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { API_BASE_URL, buildApiUrl } from './apiConfig';
+
+type RetriableRequestConfig = InternalAxiosRequestConfig & {
+  _retry?: boolean;
+  _retryCount?: number;
+};
+
+const API_TIMEOUT_MS = 30000;
+const MAX_GET_RETRIES = 2;
+const RETRYABLE_METHODS = new Set(['get', 'head', 'options']);
+const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function shouldRetry(error: AxiosError) {
+  const config = error.config as RetriableRequestConfig | undefined;
+  if (!config) return false;
+
+  const method = (config.method ?? 'get').toLowerCase();
+  if (!RETRYABLE_METHODS.has(method)) return false;
+
+  const retryCount = config._retryCount ?? 0;
+  if (retryCount >= MAX_GET_RETRIES) return false;
+
+  if (!error.response || error.code === 'ECONNABORTED') return true;
+
+  return RETRYABLE_STATUS_CODES.has(error.response.status);
+}
 
 const axiosClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 15000,
+  timeout: API_TIMEOUT_MS,
 });
 
 // ─── Request Interceptor ────────────────────────────────────
@@ -46,7 +73,17 @@ const processQueue = (error: unknown) => {
 axiosClient.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config;
+    const originalRequest = error.config as RetriableRequestConfig | undefined;
+
+    if (!originalRequest) {
+      return Promise.reject(error);
+    }
+
+    if (shouldRetry(error)) {
+      originalRequest._retryCount = (originalRequest._retryCount ?? 0) + 1;
+      await wait(500 * originalRequest._retryCount);
+      return axiosClient(originalRequest);
+    }
 
     // Skip refresh for login and refresh endpoints themselves
     const skipPaths = ['/api/v1/auth/login', '/api/v1/auth/refresh'];

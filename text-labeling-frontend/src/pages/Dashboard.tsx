@@ -65,6 +65,17 @@ type TimeRange = '7d' | '30d' | 'all';
 const RECENT_PROJECT_GRID_COLUMNS =
   'minmax(220px, 1.3fr) minmax(260px, 1.35fr) minmax(120px, 0.65fr) minmax(120px, 0.65fr) minmax(160px, 0.95fr)';
 
+const EMPTY_DASHBOARD_DATA: DashboardData = {
+  recent_projects: [],
+  recent_activity: [],
+};
+
+const DASHBOARD_ERROR_MESSAGE =
+  'Kh\u00f4ng t\u1ea3i \u0111\u01b0\u1ee3c d\u1eef li\u1ec7u trang ch\u1ee7. \u0110ang gi\u1eef d\u1eef li\u1ec7u g\u1ea7n nh\u1ea5t.';
+
+const STATS_ERROR_MESSAGE =
+  'Kh\u00f4ng t\u1ea3i \u0111\u01b0\u1ee3c th\u1ed1ng k\u00ea. Vui l\u00f2ng th\u1eed l\u1ea1i sau.';
+
 // ─── Fill missing dates in range ─────────────────────────────
 function fillDailyRange(
   data: { date: string; count: number }[],
@@ -91,22 +102,27 @@ export default function Dashboard() {
 
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [dashboardData, setDashboardData] = useState<DashboardData>({
-    recent_projects: [],
-    recent_activity: [],
-  });
+  const [dashboardData, setDashboardData] = useState<DashboardData>(EMPTY_DASHBOARD_DATA);
   const [loading, setLoading] = useState(true);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [hasLoadedDashboard, setHasLoadedDashboard] = useState(false);
+  const [hasLoadedStats, setHasLoadedStats] = useState(false);
+  const [dashboardError, setDashboardError] = useState('');
+  const [statsError, setStatsError] = useState('');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
+    setDashboardError('');
     try {
-      const dash = await projectApi.getDashboard().catch(() => ({ recent_projects: [], recent_activity: [] }));
+      const dash = await projectApi.getDashboard();
       setDashboardData(dash);
       setLastUpdated(new Date());
+    } catch {
+      setDashboardError(DASHBOARD_ERROR_MESSAGE);
     } finally {
+      setHasLoadedDashboard(true);
       setLoading(false);
     }
   }, []);
@@ -117,9 +133,11 @@ export default function Dashboard() {
       const days = range === '7d' ? 7 : range === '30d' ? 30 : undefined;
       const s = await projectApi.getDashboardStats(days);
       setStats(s);
+      setStatsError('');
     } catch {
-      // silently ignore
+      setStatsError(STATS_ERROR_MESSAGE);
     } finally {
+      setHasLoadedStats(true);
       setStatsLoading(false);
     }
   }, []);
@@ -140,6 +158,9 @@ export default function Dashboard() {
   };
 
   const chartData = stats ? fillDailyRange(stats.daily_progress, timeRange) : [];
+  const showDashboardLoading = loading && !hasLoadedDashboard;
+  const showStatsLoading = statsLoading && !hasLoadedStats;
+  const errorMessages = [dashboardError, statsError].filter(Boolean);
 
   return (
     <div>
@@ -184,6 +205,14 @@ export default function Dashboard() {
       </div>
 
       {/* ─── Workflow Pipeline ─── */}
+      {errorMessages.length > 0 && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {errorMessages.map((message) => (
+            <p key={message}>{message}</p>
+          ))}
+        </div>
+      )}
+
       <div className="bg-white rounded-xl mb-6" style={{ border: '1px solid #e5e7eb', padding: '12px 20px 14px' }}>
         <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-3">Quy trình làm việc</p>
         <div className="flex items-start justify-between">
@@ -261,7 +290,7 @@ export default function Dashboard() {
           <StatCard
             key={cfg.label}
             icon={cfg.icon}
-            value={statsLoading ? null : (cfg.value ?? 0)}
+            value={showStatsLoading ? null : (cfg.value ?? '--')}
             label={cfg.label}
             subLabel={cfg.sub}
             color={cfg.color}
@@ -283,7 +312,7 @@ export default function Dashboard() {
             </span>
           </div>
           <div className="flex-1 px-5 py-4">
-            <AnnotationChart data={chartData} loading={statsLoading} />
+            <AnnotationChart data={chartData} loading={showStatsLoading} />
           </div>
         </div>
 
@@ -294,7 +323,7 @@ export default function Dashboard() {
             <span style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: '#16a34a', display: 'inline-block' }} />
           </div>
           <div className="overflow-y-auto flex-1">
-            {loading ? (
+            {showDashboardLoading ? (
               <div className="flex items-center justify-center py-8 text-gray-400 text-sm">Đang tải...</div>
             ) : dashboardData.recent_activity.length === 0 ? (
               <div className="flex items-center justify-center py-8 text-gray-400 text-sm">Chưa có hoạt động</div>
@@ -341,7 +370,7 @@ export default function Dashboard() {
           <div className="text-center">Deadline</div>
           <div className="text-center">Trạng thái</div>
         </div>
-        {loading ? (
+        {showDashboardLoading ? (
           <div className="flex items-center justify-center py-10 text-gray-400 text-sm">Đang tải...</div>
         ) : dashboardData.recent_projects.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-gray-400">
