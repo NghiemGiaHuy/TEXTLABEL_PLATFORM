@@ -1,8 +1,7 @@
 // src/api/axiosClient.ts
 
 import axios from 'axios';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { API_BASE_URL, buildApiUrl } from './apiConfig';
 
 const axiosClient = axios.create({
   baseURL: API_BASE_URL,
@@ -77,7 +76,7 @@ axiosClient.interceptors.response.use(
       }
 
       try {
-        const { data } = await axios.post(`${API_BASE_URL}/api/v1/auth/refresh`, {
+        const { data } = await axios.post(buildApiUrl('/api/v1/auth/refresh'), {
           refresh_token: refreshToken,
         });
 

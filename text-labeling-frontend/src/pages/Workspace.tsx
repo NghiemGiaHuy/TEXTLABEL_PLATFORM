@@ -27,6 +27,7 @@ import {
   ToggleRight,
 } from 'lucide-react';
 import { annotationApi } from '../api/annotationApi';
+import { buildApiUrl } from '../api/apiConfig';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/ConfirmDialog';
 import type {
@@ -299,7 +300,7 @@ export default function Workspace() {
   const fetchMyTaskInfo = useCallback(async (tid: string): Promise<TaskDetail | null> => {
     try {
       const res = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/annotations/my-tasks?page_size=100`,
+        buildApiUrl('/api/v1/annotations/my-tasks?page_size=100'),
         { headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` } }
       );
       const data = await res.json();
