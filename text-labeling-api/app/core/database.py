@@ -19,6 +19,7 @@ engine = create_async_engine(
     pool_size=20,
     max_overflow=10,
     pool_pre_ping=True,  # check connection health before use
+    connect_args={"prepared_statement_cache_size": 0},
 )
 
 # --- Session Factory ---
