@@ -4847,8 +4847,8 @@ function RelationExtractionModal({
       ) ?? [];
 
       setSetName(editingSet?.name ?? 'Quan hệ thực thể');
-      setNerLabelsText(editingSet ? (nerLabels.length > 0 ? nerLabels.map((l) => l.name).join('\n') : 'PERSON\nORG\nLOCATION') : 'PERSON\nORG\nLOCATION');
-      setLabelsText(editingSet ? relationLabels.map((l) => l.name).join('\n') : 'works_for\nfounded_by\nlocated_in\nacquired\npart_of\nrelated_to');
+      setNerLabelsText(editingSet ? nerLabels.map((l) => l.name).join('\n') : '');
+      setLabelsText(editingSet ? relationLabels.map((l) => l.name).join('\n') : '');
       setCustomColors(editingSet ? Object.fromEntries(editingSet.labels.map((l) => [l.name, l.color])) : {});
       setOpenPicker(null);
       setError('');
