@@ -553,6 +553,9 @@ function OverviewTab({
   const annotationPct = Math.max(0, Math.min(100, Math.round(project.annotation_progress ?? 0)));
   const reviewPct = Math.max(0, Math.min(100, Math.round(project.review_progress ?? 0)));
   const completedPct = Math.max(0, Math.min(100, Math.round(project.completion_progress ?? 0)));
+  const datasetPreviewLimit = 2;
+  const previewDatasets = datasets.slice(0, datasetPreviewLimit);
+  const hasMoreDatasets = datasets.length > datasetPreviewLimit;
 
   const statCards = [
     {
@@ -608,13 +611,13 @@ function OverviewTab({
       </div>
 
       {/* Progress + Dataset list */}
-      <div className="grid gap-5 items-stretch" style={{ gridTemplateColumns: '1fr 280px' }}>
-        <div className="bg-surface-0 rounded-xl border border-surface-200 p-5 shadow-subtle flex flex-col">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] gap-5 items-start">
+        <div className="h-[210px] bg-surface-0 rounded-xl border border-surface-200 p-5 shadow-subtle flex flex-col">
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp className="w-4 h-4 text-brand-500" />
             <h3 className="text-sm font-semibold text-surface-800">Tiến độ tổng thể</h3>
           </div>
-          <div className="space-y-4 flex-1">
+          <div className="space-y-4">
             {[
               { label: 'Gán nhãn', pct: annotationPct, color: 'bg-brand-500' },
               { label: 'Review / QA', pct: reviewPct, color: 'bg-amber-500' },
@@ -636,10 +639,10 @@ function OverviewTab({
           </div>
         </div>
 
-        <div className="bg-surface-0 rounded-xl border border-surface-200 p-5 shadow-subtle flex flex-col">
+        <div className="h-[210px] bg-surface-0 rounded-xl border border-surface-200 p-5 shadow-subtle flex flex-col overflow-hidden">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-base font-semibold text-surface-900">Dataset hiện tại</h3>
-            {datasets.length > 4 && (
+            {hasMoreDatasets && (
               <button
                 onClick={() => onSwitchTab('datasets')}
                 className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700 transition-colors cursor-pointer"
@@ -653,8 +656,8 @@ function OverviewTab({
           {datasets.length === 0 ? (
             <p className="text-sm text-surface-400 text-center py-8 flex-1">Chưa có dataset nào</p>
           ) : (
-            <div className="divide-y divide-surface-100 flex-1 overflow-y-auto min-h-0">
-              {datasets.map((ds) => {
+            <div className="divide-y divide-surface-100 flex-1 min-h-0 overflow-hidden">
+              {previewDatasets.map((ds) => {
                 const dsTasks = tasks.filter((t) => t.dataset_id === ds.id);
                 const total = ds.total_samples;
                 const done = dsTasks
@@ -665,7 +668,7 @@ function OverviewTab({
                 const labelColor = ds.status === 'ready' ? 'text-emerald-600' : ds.status === 'importing' ? 'text-blue-600' : 'text-red-500';
                 const statusLabel = ds.status === 'ready' ? 'active' : ds.status === 'importing' ? 'importing' : 'error';
                 return (
-                  <div key={ds.id} className="py-3 first:pt-0 last:pb-0">
+                  <div key={ds.id} className="py-2.5 first:pt-0 last:pb-0">
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-sm font-semibold text-surface-900 truncate max-w-[140px]">{ds.name}</span>
                       <span className={`flex items-center gap-1.5 text-xs font-medium shrink-0 ml-2 ${labelColor}`}>
