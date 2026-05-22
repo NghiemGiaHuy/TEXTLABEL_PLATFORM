@@ -130,6 +130,21 @@ async def get_sample(
     return await service.get_sample(task_id, task_sample_id, current_user)
 
 
+@router.get(
+    "/tasks/{task_id}/samples/{task_sample_id}/entities",
+    response_model=list[AnnotationResponse],
+)
+async def get_sample_entities(
+    task_id: UUID,
+    task_sample_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get NER entities for relation extraction on this sample."""
+    service = AnnotationService(db)
+    return await service.get_sample_entities(task_id, task_sample_id, current_user)
+
+
 # ================================================================
 # CREATE ANNOTATION (UC-4.2 — step 3)
 # ================================================================

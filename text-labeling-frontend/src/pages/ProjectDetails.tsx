@@ -1366,10 +1366,14 @@ function TaskActionButton({ task, projectId }: { task: Task; projectId: string }
   const isInProgress = task.status === 'in_progress';
   const label = isRework ? 'Chỉnh sửa' : isInProgress ? 'Tiếp tục' : 'Bắt đầu';
   const Icon = isRework ? RotateCcw : Pencil;
+  const workspacePath =
+    (task.annotation_type ?? task.task_type) === 'relation_extraction'
+      ? `/workspace-relation/${task.id}`
+      : `/workspace/${task.id}`;
 
   return (
     <Link
-      to={`/workspace/${task.id}`}
+      to={workspacePath}
       className={`group inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white transition-all duration-200 shadow-sm ${
         isRework
           ? 'bg-amber-500 hover:bg-amber-600 hover:shadow-md hover:shadow-amber-200/60'

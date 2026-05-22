@@ -49,6 +49,57 @@ interface Relation {
   color: string;
 }
 
+function buildEntities(annotations: Annotation[]): Entity[] {
+  return annotations
+    .filter((ann) => ann.start_offset < ann.end_offset)
+    .map((ann) => ({
+      id: ann.id,
+      text: ann.selected_text,
+      start: ann.start_offset,
+      end: ann.end_offset,
+      label: ann.label_name ?? '',
+      color: ann.label_color ?? '#6366F1',
+    }));
+}
+
+function restoreRelations(
+  sample: AnnotationSampleResponse,
+  entities: Entity[]
+): Relation[] {
+  const rawRelations = sample.draft?.draft_data?.relations;
+  const draftRelations: unknown[] = Array.isArray(rawRelations)
+    ? rawRelations
+    : [];
+  const entityIds = new Set(entities.map((ent) => ent.id));
+  const labelById = new Map(sample.labels.map((label) => [label.id, label]));
+
+  return draftRelations
+    .map((item: unknown): Relation | null => {
+      const rel = item as Partial<Relation>;
+      if (
+        !rel.id ||
+        !rel.headId ||
+        !rel.tailId ||
+        !rel.relLabelId ||
+        !entityIds.has(rel.headId) ||
+        !entityIds.has(rel.tailId)
+      ) {
+        return null;
+      }
+
+      const label = labelById.get(rel.relLabelId);
+      return {
+        id: rel.id,
+        headId: rel.headId,
+        tailId: rel.tailId,
+        relLabelId: rel.relLabelId,
+        relationType: label?.name ?? rel.relationType ?? '',
+        color: label?.color ?? rel.color ?? '#10B981',
+      };
+    })
+    .filter((rel): rel is Relation => rel !== null);
+}
+
 type SampleStatus = 'pending' | 'annotated' | 'done' | 'submitted' | 'approved' | 'rejected' | 'rework';
 
 const STATUS_CFG: Record<SampleStatus, { label: string; bg: string; text: string; dot: string }> = {
@@ -267,7 +318,11 @@ export default function RelationWorkspace() {
 
   const loadSample = useCallback(async (tid: string, sample: TaskSample) => {
     try {
-      const data = await annotationApi.getSample(tid, sample.id);
+      const [data, nerAnnotations] = await Promise.all([
+        annotationApi.getSample(tid, sample.id),
+        annotationApi.getSampleEntities(tid, sample.id),
+      ]);
+      const ents = buildEntities(nerAnnotations);
       setSampleData(data);
       setTask((prev) => prev ? {
         ...prev,
@@ -275,18 +330,8 @@ export default function RelationWorkspace() {
           s.id === data.task_sample_id ? { ...s, status: data.status } : s
         ),
       } : prev);
-      // Derive entities from existing NER annotations (start_offset != 0 or end_offset != full length)
-      // We treat all annotations with span info as entities
-      const ents: Entity[] = data.annotations.map((ann: Annotation) => ({
-        id: ann.id,
-        text: ann.selected_text,
-        start: ann.start_offset,
-        end: ann.end_offset,
-        label: ann.label_name ?? '',
-        color: ann.label_color ?? '#6366F1',
-      }));
       setEntities(ents);
-      setRelations([]);
+      setRelations(restoreRelations(data, ents));
       setSelectedHead(null);
       setSelectedTail(null);
       setSelectedRelLabelId('');
@@ -395,17 +440,22 @@ export default function RelationWorkspace() {
     setSaving(true);
     try {
       // Save relations as annotations: head_start → tail_end span with relation label
-      const payload = relations.map((rel) => {
+      const payload = relations.flatMap((rel) => {
         const head = entities.find((e) => e.id === rel.headId);
         const tail = entities.find((e) => e.id === rel.tailId);
+        if (!head || !tail) return [];
         return {
           label_id: rel.relLabelId,
-          start_offset: Math.min(head?.start ?? 0, tail?.start ?? 0),
-          end_offset: Math.max(head?.end ?? 0, tail?.end ?? 0),
+          start_offset: Math.min(head.start, tail.start),
+          end_offset: Math.max(head.end, tail.end),
           selected_text: `${head?.text ?? ''} → ${tail?.text ?? ''}`,
         };
       });
       await annotationApi.bulkUpdateAnnotations(taskId, sampleId, payload);
+      await annotationApi.saveDraft(taskId, sampleId, {
+        kind: 'relation_extraction',
+        relations,
+      });
       showToast('success', 'Đã lưu quan hệ');
       await loadSample(taskId, task.task_samples[currentSampleIndex]);
     } catch {

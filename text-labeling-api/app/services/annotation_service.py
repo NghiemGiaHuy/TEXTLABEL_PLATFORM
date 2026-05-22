@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -22,7 +22,13 @@ from app.models.dataset import DataSample
 from app.models.label import Label, LabelSet
 from app.models.notification import NotificationType
 from app.models.project import Guideline, Project, ProjectMember, ProjectRole
-from app.models.task import Task, TaskSample, TaskSampleStatus, TaskStatus
+from app.models.task import (
+    AnnotationType,
+    Task,
+    TaskSample,
+    TaskSampleStatus,
+    TaskStatus,
+)
 from app.models.user import RoleName, User
 from app.services.notification_service import create_notification
 
@@ -178,6 +184,47 @@ class AnnotationService:
             "labels": labels,
             "guideline_version": guideline_version,
         }
+
+    async def get_sample_entities(
+        self, task_id: UUID, task_sample_id: UUID, current_user: User
+    ) -> List[dict]:
+        """Load NER entities for the same underlying data sample."""
+        task = await self._get_my_task(task_id, current_user)
+        ts = await self._get_task_sample(task_sample_id, task.id)
+
+        result = await self.db.execute(
+            select(Annotation)
+            .join(TaskSample, Annotation.task_sample_id == TaskSample.id)
+            .join(Task, TaskSample.task_id == Task.id)
+            .options(selectinload(Annotation.label))
+            .where(
+                and_(
+                    Task.project_id == task.project_id,
+                    TaskSample.data_sample_id == ts.data_sample_id,
+                    or_(
+                        Task.annotation_type.in_(
+                            [
+                                AnnotationType.NER,
+                                AnnotationType.SEQUENCE_LABELING,
+                            ]
+                        ),
+                        Task.annotation_type.is_(None),
+                    ),
+                    Annotation.start_offset < Annotation.end_offset,
+                )
+            )
+            .order_by(Annotation.start_offset, Annotation.end_offset)
+        )
+
+        seen: set[tuple[int, int, UUID]] = set()
+        entities = []
+        for ann in result.scalars().unique().all():
+            key = (ann.start_offset, ann.end_offset, ann.label_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            entities.append(self._build_annotation_response(ann))
+        return entities
 
     # ================================================================
     # CREATE ANNOTATION (UC-4.2 — step 3)

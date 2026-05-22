@@ -56,6 +56,17 @@ export const annotationApi = {
     return data;
   },
 
+  /** Get NER entities that can be used as relation endpoints */
+  getSampleEntities: async (
+    taskId: string,
+    taskSampleId: string
+  ): Promise<Annotation[]> => {
+    const { data } = await axiosClient.get<Annotation[]>(
+      `/api/v1/annotations/tasks/${taskId}/samples/${taskSampleId}/entities`
+    );
+    return data;
+  },
+
   /** Get previous/next sample IDs */
   getAdjacent: async (
     taskId: string,
