@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
 from app.core.config import settings
-from app.core.database import AsyncSessionLocal, engine, Base
+from app.core.database import AsyncSessionLocal, Base, engine
 from app.core.seed import run_seed
 
 logging.basicConfig(
@@ -27,23 +27,24 @@ logger = logging.getLogger(__name__)
 # ================================================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: create tables + seed. Shutdown: dispose engine."""
-    logger.info(f"🚀 Starting {settings.APP_NAME} ({settings.APP_ENV})")
+    """Startup: optional database bootstrap. Shutdown: dispose engine."""
+    logger.info(f"Starting {settings.APP_NAME} ({settings.APP_ENV})")
 
-    # Create tables (dev only — use Alembic in production)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("📦 Database tables ensured")
+    if settings.RUN_DB_BOOTSTRAP:
+        # Create tables in local/dev setups. Use Alembic for managed databases.
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Database tables ensured")
 
-    # Seed roles & admin
-    async with AsyncSessionLocal() as session:
-        await run_seed(session)
+        async with AsyncSessionLocal() as session:
+            await run_seed(session)
+    else:
+        logger.info("Database bootstrap skipped")
 
     yield
 
-    # Shutdown
     await engine.dispose()
-    logger.info("👋 Application shutdown complete")
+    logger.info("Application shutdown complete")
 
 
 # ================================================================
@@ -52,7 +53,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     version="1.0.0",
-    description="Text Labeling Platform API — Phase 1",
+    description="Text Labeling Platform API - Phase 1",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
