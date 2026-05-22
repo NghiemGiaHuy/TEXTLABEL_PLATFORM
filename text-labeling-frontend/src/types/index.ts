@@ -276,6 +276,8 @@ export interface Annotation {
   label_id: string;
   label_name: string | null;
   label_color: string | null;
+  label_group_id?: string | null;
+  label_group_name?: string | null;
   start_offset: number;
   end_offset: number;
   selected_text: string;
@@ -292,6 +294,8 @@ export interface LabelOption {
   color: string;
   shortcut_key: string | null;
   is_required: boolean;
+  label_group_id?: string | null;
+  label_group_name?: string | null;
 }
 
 export interface AnnotationDraft {
@@ -372,4 +376,5 @@ export interface CreateLabelPayload {
   shortcut_key?: string;
   sort_order?: number;
   is_required?: boolean;
+  label_group_id?: string | null;
 }

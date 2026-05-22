@@ -43,6 +43,8 @@ class AnnotationResponse(BaseModel):
     label_id: UUID
     label_name: Optional[str] = None
     label_color: Optional[str] = None
+    label_group_id: Optional[UUID] = None
+    label_group_name: Optional[str] = None
     start_offset: int
     end_offset: int
     selected_text: str

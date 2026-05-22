@@ -782,6 +782,7 @@ class AnnotationService:
 
         result = await self.db.execute(
             select(Label)
+            .options(selectinload(Label.group))
             .join(LabelSet, Label.label_set_id == LabelSet.id)
             .where(and_(*filters))
             .order_by(Label.sort_order)
@@ -793,6 +794,8 @@ class AnnotationService:
                 "color": l.color,
                 "shortcut_key": l.shortcut_key,
                 "is_required": l.is_required,
+                "label_group_id": l.label_group_id,
+                "label_group_name": l.group.name if l.group else None,
             }
             for l in result.scalars().all()
         ]
@@ -817,6 +820,8 @@ class AnnotationService:
             "label_id": a.label_id,
             "label_name": a.label.name if a.label else None,
             "label_color": a.label.color if a.label else None,
+            "label_group_id": a.label.label_group_id if a.label else None,
+            "label_group_name": None,
             "start_offset": a.start_offset,
             "end_offset": a.end_offset,
             "selected_text": a.selected_text,

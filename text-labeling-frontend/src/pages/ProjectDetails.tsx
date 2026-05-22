@@ -4789,6 +4789,23 @@ function NERLabelModal({
 // ─────────────────────────────────────────────────────────────
 // RELATION EXTRACTION MODAL
 // ─────────────────────────────────────────────────────────────
+const RE_NER_GROUP_NAME = 'NER Labels';
+const RE_RELATION_GROUP_NAME = 'Relation Labels';
+
+function normalizeGroupName(name: string) {
+  return name.trim().toLowerCase();
+}
+
+function isNerGroupName(name: string) {
+  const normalized = normalizeGroupName(name);
+  return normalized.includes('ner') || normalized.includes('entity') || normalized.includes('thực thể');
+}
+
+function isRelationGroupName(name: string) {
+  const normalized = normalizeGroupName(name);
+  return normalized.includes('relation') || normalized.includes('quan hệ');
+}
+
 function RelationExtractionModal({
   isOpen,
   onClose,
@@ -4803,6 +4820,7 @@ function RelationExtractionModal({
   editingSet?: LabelSetData;
 }) {
   const [setName, setSetName] = useState('Quan hệ thực thể');
+  const [nerLabelsText, setNerLabelsText] = useState('');
   const [labelsText, setLabelsText] = useState('');
   const [customColors, setCustomColors] = useState<Record<string, string>>({});
   const [openPicker, setOpenPicker] = useState<string | null>(null);
@@ -4811,20 +4829,39 @@ function RelationExtractionModal({
 
   useEffect(() => {
     if (isOpen) {
+      const nerGroupIds = new Set(
+        (editingSet?.groups ?? [])
+          .filter((group) => isNerGroupName(group.name))
+          .map((group) => group.id)
+      );
+      const relationGroupIds = new Set(
+        (editingSet?.groups ?? [])
+          .filter((group) => isRelationGroupName(group.name))
+          .map((group) => group.id)
+      );
+      const nerLabels = editingSet?.labels.filter((label) =>
+        label.label_group_id ? nerGroupIds.has(label.label_group_id) : false
+      ) ?? [];
+      const relationLabels = editingSet?.labels.filter((label) =>
+        label.label_group_id ? relationGroupIds.has(label.label_group_id) : true
+      ) ?? [];
+
       setSetName(editingSet?.name ?? 'Quan hệ thực thể');
-      setLabelsText(editingSet ? editingSet.labels.map((l) => l.name).join('\n') : '');
+      setNerLabelsText(editingSet ? (nerLabels.length > 0 ? nerLabels.map((l) => l.name).join('\n') : 'PERSON\nORG\nLOCATION') : 'PERSON\nORG\nLOCATION');
+      setLabelsText(editingSet ? relationLabels.map((l) => l.name).join('\n') : 'works_for\nfounded_by\nlocated_in\nacquired\npart_of\nrelated_to');
       setCustomColors(editingSet ? Object.fromEntries(editingSet.labels.map((l) => [l.name, l.color])) : {});
       setOpenPicker(null);
       setError('');
     }
   }, [isOpen, editingSet]);
 
+  const nerLabelNames = nerLabelsText.split('\n').map((s) => s.trim()).filter(Boolean);
   const labelNames = labelsText.split('\n').map((s) => s.trim()).filter(Boolean);
   const getColor = (name: string, idx: number) =>
-    customColors[name] ?? editingSet?.labels[idx]?.color ?? LABEL_COLORS[idx % LABEL_COLORS.length];
+    customColors[name] ?? editingSet?.labels.find((label) => label.name === name)?.color ?? LABEL_COLORS[idx % LABEL_COLORS.length];
 
   const handleSubmit = async () => {
-    if (labelNames.length === 0) return;
+    if (nerLabelNames.length === 0 || labelNames.length === 0) return;
     setSubmitting(true);
     setError('');
     try {
@@ -4834,34 +4871,72 @@ function RelationExtractionModal({
         if (setName.trim() && setName.trim() !== editingSet.name) {
           await labelApi.updateLabelSet(projectId, targetSetId, { name: setName.trim() });
         }
-        for (let i = 0; i < labelNames.length; i++) {
-          const existing = editingSet.labels[i];
-          const color = getColor(labelNames[i], i);
-          if (existing) {
-            await labelApi.updateLabel(projectId, targetSetId, existing.id, {
-              name: labelNames[i],
-              color,
-              sort_order: i,
-            });
-          } else {
-            await labelApi.createLabel(projectId, targetSetId, {
-              name: labelNames[i],
-              color,
-              sort_order: i,
-            });
-          }
-        }
-        for (const removedLabel of editingSet.labels.slice(labelNames.length)) {
-          await labelApi.deleteLabel(projectId, targetSetId, removedLabel.id);
-        }
       } else {
         const newSet = await labelApi.createLabelSet(projectId, setName.trim() || 'Quan hệ thực thể');
         targetSetId = newSet.id;
-        for (let i = 0; i < labelNames.length; i++) {
-          await labelApi.createLabel(projectId, targetSetId, {
-            name: labelNames[i],
-            color: customColors[labelNames[i]] ?? LABEL_COLORS[i % LABEL_COLORS.length],
-          });
+      }
+
+      const ensureGroup = async (
+        groupName: string,
+        sortOrder: number,
+        matcher: (name: string) => boolean
+      ) => {
+        const existingGroup = editingSet?.groups.find((group) => matcher(group.name));
+        if (existingGroup) return existingGroup;
+        return labelApi.createLabelGroup(projectId, targetSetId, {
+          name: groupName,
+          sort_order: sortOrder,
+        });
+      };
+
+      const nerGroup = await ensureGroup(RE_NER_GROUP_NAME, 0, isNerGroupName);
+      const relationGroup = await ensureGroup(RE_RELATION_GROUP_NAME, 1, isRelationGroupName);
+
+      const syncLabels = async (
+        names: string[],
+        groupId: string,
+        startIndex: number,
+        includeUngrouped = false
+      ) => {
+        const existingLabels = (editingSet?.labels ?? []).filter((label) =>
+          label.label_group_id === groupId || (includeUngrouped && !label.label_group_id)
+        );
+
+        for (let i = 0; i < names.length; i++) {
+          const existing = existingLabels[i];
+          const color = getColor(names[i], startIndex + i);
+          if (existing) {
+            await labelApi.updateLabel(projectId, targetSetId, existing.id, {
+              name: names[i],
+              color,
+              sort_order: i,
+              label_group_id: groupId,
+            });
+          } else {
+            await labelApi.createLabel(projectId, targetSetId, {
+              name: names[i],
+              color,
+              sort_order: i,
+              label_group_id: groupId,
+            });
+          }
+        }
+
+        for (const removedLabel of existingLabels.slice(names.length)) {
+          await labelApi.deleteLabel(projectId, targetSetId, removedLabel.id);
+        }
+      };
+
+      await syncLabels(nerLabelNames, nerGroup.id, 0);
+      await syncLabels(labelNames, relationGroup.id, nerLabelNames.length, true);
+
+      if (editingSet) {
+        const syncedGroupIds = new Set([nerGroup.id, relationGroup.id]);
+        const staleGroupedLabels = editingSet.labels.filter((label) =>
+          label.label_group_id && !syncedGroupIds.has(label.label_group_id)
+        );
+        for (const removedLabel of staleGroupedLabels) {
+          await labelApi.deleteLabel(projectId, targetSetId, removedLabel.id);
         }
       }
       onCreated(targetSetId);
@@ -4876,6 +4951,15 @@ function RelationExtractionModal({
     { head: 'Nguyễn Văn A', rel: labelNames[0], tail: 'Công ty ABC', relIdx: 0 },
     { head: 'Công ty ABC', rel: labelNames[1], tail: 'Hà Nội', relIdx: 1 },
   ].filter((r) => r.rel);
+  const previewEntityLabels = [
+    { text: 'Nguyễn Văn A', label: nerLabelNames[0], idx: 0 },
+    { text: 'Công ty ABC', label: nerLabelNames[1], idx: 1 },
+    { text: 'Hà Nội', label: nerLabelNames[2], idx: 2 },
+  ].filter((item) => item.label);
+  const colorPreviewLabels = [
+    ...nerLabelNames.map((name, idx) => ({ name, idx })),
+    ...labelNames.map((name, idx) => ({ name, idx: nerLabelNames.length + idx })),
+  ];
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={editingSet ? 'Chỉnh sửa — Relation Extraction' : 'Relation Extraction'} maxWidth="max-w-4xl">
@@ -4893,27 +4977,40 @@ function RelationExtractionModal({
           </div>
           <div>
             <label className="block text-sm font-medium text-surface-700 mb-1.5">
-              Loại quan hệ
+              Nhãn NER
+              <span className="ml-1.5 text-xs font-normal text-surface-400">(mỗi dòng một nhãn)</span>
+            </label>
+            <textarea
+              value={nerLabelsText}
+              onChange={(e) => setNerLabelsText(e.target.value)}
+              placeholder={'PERSON\nORG\nLOCATION'}
+              rows={4}
+              className="input-field resize-none"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-surface-700 mb-1.5">
+              Relation label
               <span className="ml-1.5 text-xs font-normal text-surface-400">(mỗi dòng một loại)</span>
             </label>
             <textarea
               value={labelsText}
               onChange={(e) => setLabelsText(e.target.value)}
-              placeholder={'CEO_OF\nWORKS_AT\nLOCATED_IN\nFOUNDED_BY'}
-              rows={6}
+              placeholder={'works_for\nfounded_by\nlocated_in\nacquired\npart_of\nrelated_to'}
+              rows={5}
               className="input-field resize-none"
             />
           </div>
-          {labelNames.length > 0 && (
+          {colorPreviewLabels.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              {labelNames.map((name, i) => (
-                <div key={i} className="relative">
+              {colorPreviewLabels.map(({ name, idx }) => (
+                <div key={`${name}-${idx}`} className="relative">
                   <button
                     type="button"
                     title="Đổi màu"
                     onClick={() => setOpenPicker(openPicker === name ? null : name)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white hover:brightness-90 transition-all cursor-pointer"
-                    style={{ backgroundColor: getColor(name, i) }}
+                    style={{ backgroundColor: getColor(name, idx) }}
                   >
                     {name}
                     <span className="w-2.5 h-2.5 rounded-full bg-white/30 flex items-center justify-center">
@@ -4929,7 +5026,7 @@ function RelationExtractionModal({
                             key={col}
                             type="button"
                             onClick={() => { setCustomColors((p) => ({ ...p, [name]: col })); setOpenPicker(null); }}
-                            className={`w-6 h-6 rounded-full hover:scale-110 transition-transform border-2 cursor-pointer ${getColor(name, i) === col ? 'border-surface-800 scale-110' : 'border-transparent'}`}
+                            className={`w-6 h-6 rounded-full hover:scale-110 transition-transform border-2 cursor-pointer ${getColor(name, idx) === col ? 'border-surface-800 scale-110' : 'border-transparent'}`}
                             style={{ backgroundColor: col }}
                           />
                         ))}
@@ -4956,6 +5053,23 @@ function RelationExtractionModal({
                 <mark className="rounded px-1 font-medium not-italic" style={{ backgroundColor: '#10B98128', color: '#10B981' }}>Hà Nội</mark>
                 {'.'}
               </p>
+              {previewEntityLabels.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {previewEntityLabels.map((item) => (
+                    <span
+                      key={item.text}
+                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold"
+                      style={{
+                        backgroundColor: `${getColor(item.label!, item.idx)}1A`,
+                        color: getColor(item.label!, item.idx),
+                      }}
+                    >
+                      {item.text}
+                      <span className="text-[10px] opacity-70">{item.label}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="px-4 py-3">
               <p className="text-xs text-surface-400 font-medium uppercase tracking-wide mb-2.5">Quan hệ</p>
@@ -5006,7 +5120,7 @@ function RelationExtractionModal({
         <button onClick={onClose} disabled={submitting} className="btn-ghost">Hủy</button>
         <button
           onClick={handleSubmit}
-          disabled={labelNames.length === 0 || submitting}
+          disabled={nerLabelNames.length === 0 || labelNames.length === 0 || submitting}
           className="btn-primary"
         >
           {submitting && <Loader2 className="w-4 h-4 animate-spin" />}

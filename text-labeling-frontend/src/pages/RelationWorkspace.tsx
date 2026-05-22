@@ -49,6 +49,14 @@ interface Relation {
   color: string;
 }
 
+interface TextSelection {
+  startOffset: number;
+  endOffset: number;
+  selectedText: string;
+}
+
+type WorkspaceStep = 'entities' | 'relations';
+
 function buildEntities(annotations: Annotation[]): Entity[] {
   return annotations
     .filter((ann) => ann.start_offset < ann.end_offset)
@@ -124,6 +132,38 @@ function hexToRgb(hex: string): string {
   return `${r}, ${g}, ${b}`;
 }
 
+function normalizeGroupName(name: string | null | undefined) {
+  return (name ?? '').trim().toLowerCase();
+}
+
+function isNerLabel(label: LabelOption) {
+  const groupName = normalizeGroupName(label.label_group_name);
+  return groupName.includes('ner') || groupName.includes('entity') || groupName.includes('thực thể');
+}
+
+function isRelationLabel(label: LabelOption) {
+  const groupName = normalizeGroupName(label.label_group_name);
+  return groupName.includes('relation') || groupName.includes('quan hệ');
+}
+
+function hasLabelGroups(labels: LabelOption[]) {
+  return labels.some((label) => Boolean(label.label_group_id || label.label_group_name));
+}
+
+function mergeEntities(primary: Entity[], secondary: Entity[]) {
+  const seen = new Set<string>();
+  const merged: Entity[] = [];
+
+  for (const ent of [...primary, ...secondary]) {
+    const key = `${ent.start}:${ent.end}:${ent.label}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(ent);
+  }
+
+  return merged.sort((a, b) => a.start - b.start || a.end - b.end);
+}
+
 // ─── Annotated text ────────────────────────────────────────────
 
 function AnnotatedText({
@@ -132,15 +172,20 @@ function AnnotatedText({
   selectedHead,
   selectedTail,
   onEntityClick,
+  onSelectionChange,
   entityRefs,
+  relationMode = false,
 }: {
   text: string;
   entities: Entity[];
   selectedHead: string | null;
   selectedTail: string | null;
   onEntityClick: (e: Entity) => void;
+  onSelectionChange?: (selection: TextSelection | null) => void;
   entityRefs: React.MutableRefObject<Record<string, HTMLElement | null>>;
+  relationMode?: boolean;
 }) {
+  const textRef = useRef<HTMLParagraphElement>(null);
   const sorted = [...entities].sort((a, b) => a.start - b.start);
   const parts: { text: string; entity?: Entity }[] = [];
   let cursor = 0;
@@ -152,8 +197,77 @@ function AnnotatedText({
   }
   if (cursor < text.length) parts.push({ text: text.slice(cursor) });
 
+  const getTextOffset = (container: HTMLElement, node: Node, offset: number) => {
+    let total = 0;
+    const walker = document.createTreeWalker(
+      container,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode(textNode) {
+          const parent = textNode.parentElement;
+          if (parent?.closest('[data-selection-ignore="true"]')) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          return NodeFilter.FILTER_ACCEPT;
+        },
+      }
+    );
+
+    let current = walker.nextNode();
+    while (current) {
+      const length = current.textContent?.length ?? 0;
+      if (current === node) return total + Math.min(offset, length);
+      total += length;
+      current = walker.nextNode();
+    }
+    return null;
+  };
+
+  const handleSelection = () => {
+    if (!onSelectionChange) return;
+    const selection = window.getSelection();
+    const container = textRef.current;
+    if (!selection || !container || selection.rangeCount === 0 || selection.isCollapsed) {
+      onSelectionChange(null);
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    if (!container.contains(range.commonAncestorContainer)) {
+      onSelectionChange(null);
+      return;
+    }
+
+    const rawStart = getTextOffset(container, range.startContainer, range.startOffset);
+    const rawEnd = getTextOffset(container, range.endContainer, range.endOffset);
+    if (rawStart === null || rawEnd === null || rawStart === rawEnd) {
+      onSelectionChange(null);
+      return;
+    }
+
+    let startOffset = Math.min(rawStart, rawEnd);
+    let endOffset = Math.max(rawStart, rawEnd);
+    let selectedText = text.slice(startOffset, endOffset);
+    const leadingSpace = selectedText.length - selectedText.trimStart().length;
+    const trailingSpace = selectedText.length - selectedText.trimEnd().length;
+    startOffset += leadingSpace;
+    endOffset -= trailingSpace;
+    selectedText = text.slice(startOffset, endOffset);
+
+    onSelectionChange(
+      selectedText
+        ? { startOffset, endOffset, selectedText }
+        : null
+    );
+  };
+
   return (
-    <p className="text-sm text-surface-800 leading-9 select-text">
+    <p
+      ref={textRef}
+      onMouseUp={handleSelection}
+      onKeyUp={handleSelection}
+      className="text-sm text-surface-800 leading-9 select-text"
+    >
       {parts.map((part, i) => {
         if (!part.entity) return <span key={i}>{part.text}</span>;
         const ent = part.entity;
@@ -164,18 +278,22 @@ function AnnotatedText({
           <mark
             key={i}
             ref={(el) => { entityRefs.current[ent.id] = el; }}
-            onClick={() => onEntityClick(ent)}
-            className="rounded px-1 not-italic font-semibold cursor-pointer transition-all"
+            onClick={(event) => {
+              if (!relationMode) return;
+              event.stopPropagation();
+              onEntityClick(ent);
+            }}
+            className={`rounded px-1 not-italic font-semibold transition-all ${relationMode ? 'cursor-pointer' : 'cursor-default'}`}
             style={{
               backgroundColor: `rgba(${rgb}, 0.18)`,
               color: ent.color,
               outline: isHead ? `2px solid ${ent.color}` : isTail ? `2px dashed ${ent.color}` : 'none',
               outlineOffset: '2px',
             }}
-            title={`${ent.label}${isHead ? ' [HEAD]' : isTail ? ' [TAIL]' : ''} — click để chọn`}
+            title={relationMode ? `${ent.label}${isHead ? ' [HEAD]' : isTail ? ' [TAIL]' : ''} — click để chọn` : ent.label}
           >
             {part.text}
-            <sup className="text-[9px] ml-0.5 font-normal opacity-60">{ent.label}</sup>
+            <sup data-selection-ignore="true" className="text-[9px] ml-0.5 font-normal opacity-60">{ent.label}</sup>
           </mark>
         );
       })}
@@ -295,9 +413,16 @@ export default function RelationWorkspace() {
   const [selectedTail, setSelectedTail] = useState<string | null>(null);
   const [selectedRelLabelId, setSelectedRelLabelId] = useState('');
   const [editingRelId, setEditingRelId] = useState<string | null>(null);
+  const [selection, setSelection] = useState<TextSelection | null>(null);
+  const [workspaceStep, setWorkspaceStep] = useState<WorkspaceStep>('entities');
 
   const containerRef = useRef<HTMLDivElement>(null);
   const entityRefs = useRef<Record<string, HTMLElement | null>>({});
+
+  const labelOptions: LabelOption[] = sampleData?.labels ?? [];
+  const groupedLabels = hasLabelGroups(labelOptions);
+  const nerLabelOptions = groupedLabels ? labelOptions.filter(isNerLabel) : [];
+  const relTypeOptions: LabelOption[] = groupedLabels ? labelOptions.filter(isRelationLabel) : labelOptions;
 
   // ── Fetch task via my-tasks list ────────────────────────────
   async function fetchMyTask(tid: string): Promise<TaskDetail | null> {
@@ -322,7 +447,21 @@ export default function RelationWorkspace() {
         annotationApi.getSample(tid, sample.id),
         annotationApi.getSampleEntities(tid, sample.id),
       ]);
-      const ents = buildEntities(nerAnnotations);
+      const dataHasGroups = hasLabelGroups(data.labels);
+      const nerLabelIds = new Set(
+        dataHasGroups
+          ? data.labels.filter(isNerLabel).map((label) => label.id)
+          : []
+      );
+      const currentEntityAnnotations = dataHasGroups
+        ? data.annotations.filter((ann) => nerLabelIds.has(ann.label_id))
+        : [];
+      const ents = mergeEntities(
+        buildEntities(currentEntityAnnotations),
+        buildEntities(nerAnnotations)
+      );
+      const restoredRelations = restoreRelations(data, ents);
+      const draftData = data.draft?.draft_data as { entityStepSaved?: boolean } | undefined;
       setSampleData(data);
       setTask((prev) => prev ? {
         ...prev,
@@ -331,11 +470,14 @@ export default function RelationWorkspace() {
         ),
       } : prev);
       setEntities(ents);
-      setRelations(restoreRelations(data, ents));
+      setRelations(restoredRelations);
       setSelectedHead(null);
       setSelectedTail(null);
       setSelectedRelLabelId('');
       setEditingRelId(null);
+      setSelection(null);
+      setWorkspaceStep(!dataHasGroups || draftData?.entityStepSaved || restoredRelations.length > 0 ? 'relations' : 'entities');
+      entityRefs.current = {};
     } catch (err) {
       const e = err as { response?: { data?: { detail?: string } } };
       setError(e?.response?.data?.detail ?? 'Không thể tải sample');
@@ -392,7 +534,7 @@ export default function RelationWorkspace() {
   };
 
   // ── Add / update relation ───────────────────────────────────
-  const selectedRelLabel = sampleData?.labels.find((l) => l.id === selectedRelLabelId);
+  const selectedRelLabel = relTypeOptions.find((l) => l.id === selectedRelLabelId);
 
   const handleAddRelation = () => {
     if (!selectedHead || !selectedTail || !selectedRelLabel) return;
@@ -432,14 +574,68 @@ export default function RelationWorkspace() {
     }
   };
 
-  // ── Save (bulk replace annotations for this sample) ─────────
+  const handleCreateEntity = useCallback(async (label: LabelOption) => {
+    if (!taskId || !task || !selection) return;
+    const sample = task.task_samples[currentSampleIndex];
+    if (!sample) return;
+
+    const overlaps = entities.some((ent) =>
+      Math.max(ent.start, selection.startOffset) < Math.min(ent.end, selection.endOffset)
+    );
+    if (overlaps) {
+      showToast('error', 'Vùng text này đã trùng với entity khác');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await annotationApi.createAnnotation(taskId, sample.id, {
+        label_id: label.id,
+        start_offset: selection.startOffset,
+        end_offset: selection.endOffset,
+        selected_text: selection.selectedText,
+      });
+      window.getSelection()?.removeAllRanges();
+      setSelection(null);
+      showToast('success', 'Đã thêm entity');
+      await loadSample(taskId, sample);
+    } catch {
+      showToast('error', 'Không thể thêm entity');
+    } finally {
+      setSaving(false);
+    }
+  }, [taskId, task, currentSampleIndex, selection, entities, loadSample, showToast]);
+
+  const handleEntityStepSave = useCallback(async (showMessage = true) => {
+    if (!taskId || !task || !sampleData) return;
+    const sample = task.task_samples[currentSampleIndex];
+    if (!sample) return;
+
+    setSaving(true);
+    try {
+      await annotationApi.saveDraft(taskId, sample.id, {
+        ...(sampleData.draft?.draft_data ?? {}),
+        kind: 'relation_extraction',
+        entityStepSaved: true,
+        relations,
+      });
+      setWorkspaceStep('relations');
+      setSelection(null);
+      if (showMessage) showToast('success', 'Đã lưu entity, tiếp tục gán quan hệ');
+    } catch {
+      showToast('error', 'Lưu thất bại');
+    } finally {
+      setSaving(false);
+    }
+  }, [taskId, task, sampleData, currentSampleIndex, relations, showToast]);
+
+  // ── Save relation annotations for this sample ───────────────
   const handleSave = useCallback(async () => {
     if (!taskId || !task || !sampleData) return;
     const sampleId = task.task_samples[currentSampleIndex]?.id;
     if (!sampleId) return;
     setSaving(true);
     try {
-      // Save relations as annotations: head_start → tail_end span with relation label
       const payload = relations.flatMap((rel) => {
         const head = entities.find((e) => e.id === rel.headId);
         const tail = entities.find((e) => e.id === rel.tailId);
@@ -448,12 +644,24 @@ export default function RelationWorkspace() {
           label_id: rel.relLabelId,
           start_offset: Math.min(head.start, tail.start),
           end_offset: Math.max(head.end, tail.end),
-          selected_text: `${head?.text ?? ''} → ${tail?.text ?? ''}`,
+          selected_text: `${head.text} -> ${tail.text}`,
         };
       });
-      await annotationApi.bulkUpdateAnnotations(taskId, sampleId, payload);
+
+      const relationLabelIds = new Set(relTypeOptions.map((label) => label.id));
+      const existingRelationAnnotations = sampleData.annotations.filter((ann) =>
+        relationLabelIds.has(ann.label_id)
+      );
+      for (const ann of existingRelationAnnotations) {
+        await annotationApi.deleteAnnotation(taskId, sampleId, ann.id);
+      }
+      for (const annotation of payload) {
+        await annotationApi.createAnnotation(taskId, sampleId, annotation);
+      }
+
       await annotationApi.saveDraft(taskId, sampleId, {
         kind: 'relation_extraction',
+        entityStepSaved: true,
         relations,
       });
       showToast('success', 'Đã lưu quan hệ');
@@ -463,7 +671,7 @@ export default function RelationWorkspace() {
     } finally {
       setSaving(false);
     }
-  }, [taskId, task, sampleData, currentSampleIndex, relations, entities, loadSample, showToast]);
+  }, [taskId, task, sampleData, currentSampleIndex, relations, entities, relTypeOptions, loadSample, showToast]);
 
   // ── Mark sample done/undone ─────────────────────────────────
   const handleMarkDone = useCallback(async () => {
@@ -473,8 +681,12 @@ export default function RelationWorkspace() {
     const newStatus: 'annotated' | 'done' = sample.status === 'done' ? 'annotated' : 'done';
     setDoneLoading(true);
     try {
-      if (newStatus === 'done' && relations.length > 0) {
-        await handleSave();
+      if (newStatus === 'done') {
+        if (workspaceStep === 'entities') {
+          await handleEntityStepSave(false);
+        } else {
+          await handleSave();
+        }
       }
       await annotationApi.markSampleStatus(taskId, sample.id, newStatus);
       setTask((prev) => {
@@ -494,7 +706,7 @@ export default function RelationWorkspace() {
     } finally {
       setDoneLoading(false);
     }
-  }, [taskId, task, currentSampleIndex, relations.length, handleSave, showToast]);
+  }, [taskId, task, currentSampleIndex, workspaceStep, handleEntityStepSave, handleSave, showToast]);
 
   // ── Submit task ─────────────────────────────────────────────
   const handleSubmit = async () => {
@@ -502,7 +714,11 @@ export default function RelationWorkspace() {
     if (!await confirm('Nộp task này để review?', { title: 'Nộp task', confirmText: 'Nộp' })) return;
     setSubmitLoading(true);
     try {
-      await handleSave();
+      if (workspaceStep === 'entities') {
+        await handleEntityStepSave(false);
+      } else {
+        await handleSave();
+      }
       await annotationApi.submitTask(taskId);
       showToast('success', 'Đã chuyển task cho reviewer');
       navigate(-1);
@@ -536,7 +752,6 @@ export default function RelationWorkspace() {
   const samples: TaskSample[] = task.task_samples;
   const totalSamples = samples.length;
   const doneCount = samples.filter((s) => isSampleProcessed(s.status)).length;
-  const relTypeOptions: LabelOption[] = sampleData?.labels ?? [];
 
   const filteredSamples = samples
     .map((s, i) => ({ s, i }))
@@ -671,57 +886,69 @@ export default function RelationWorkspace() {
                     })()}
                   </div>
                   <button
-                    onClick={handleSave}
+                    onClick={() => {
+                      if (workspaceStep === 'entities') {
+                        void handleEntityStepSave();
+                      } else {
+                        void handleSave();
+                      }
+                    }}
                     disabled={saving}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-200 text-surface-600 hover:bg-surface-50 transition-colors disabled:opacity-50"
                   >
                     {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                    Lưu
+                    {workspaceStep === 'entities' ? 'Lưu' : 'Lưu quan hệ'}
                   </button>
                 </div>
 
                 {/* Instruction */}
                 <div className="bg-brand-50 border border-brand-100 rounded-xl px-4 py-2.5 text-xs text-brand-700">
-                  Click vào <strong>entity đầu (HEAD)</strong> trước, rồi click <strong>entity đuôi (TAIL)</strong>,
-                  chọn loại quan hệ ở panel phải, rồi nhấn <strong>Thêm quan hệ</strong>.
+                  {workspaceStep === 'entities' ? (
+                    <>
+                      Bôi đen text gốc, chọn nhãn NER ở panel phải, rồi nhấn <strong>Lưu</strong> để chuyển sang gán quan hệ.
+                    </>
+                  ) : (
+                    <>
+                      Click vào <strong>entity đầu (HEAD)</strong> trước, rồi click <strong>entity đuôi (TAIL)</strong>,
+                      chọn loại quan hệ ở panel phải, rồi nhấn <strong>Thêm quan hệ</strong>.
+                    </>
+                  )}
                 </div>
 
                 {/* Text with entity highlights */}
                 <div className="bg-white rounded-2xl border border-surface-200 shadow-subtle p-5 relative" ref={containerRef}>
-                  {entities.length === 0 ? (
-                    <div className="space-y-3">
-                      <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700">
-                        Không có entity nào. Sample này cần được gán nhãn NER trước.
-                      </div>
-                      <p className="text-sm text-surface-700 leading-8">{sampleData.content}</p>
+                  {workspaceStep === 'relations' && entities.length === 0 && (
+                    <div className="mb-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700">
+                      Không có entity nào. Sample này cần được gán nhãn NER trước.
                     </div>
-                  ) : (
-                    <>
-                      {relations.length > 0 && (
-                        <RelationArrows
-                          relations={relations}
-                          entities={entities}
-                          entityRefs={entityRefs}
-                          containerRef={containerRef}
-                        />
-                      )}
-                      <AnnotatedText
-                        text={sampleData.content}
-                        entities={entities}
-                        selectedHead={selectedHead}
-                        selectedTail={selectedTail}
-                        onEntityClick={handleEntityClick}
-                        entityRefs={entityRefs}
-                      />
-                    </>
                   )}
+                  {relations.length > 0 && workspaceStep === 'relations' && (
+                    <RelationArrows
+                      relations={relations}
+                      entities={entities}
+                      entityRefs={entityRefs}
+                      containerRef={containerRef}
+                    />
+                  )}
+                  <AnnotatedText
+                    text={sampleData.content}
+                    entities={entities}
+                    selectedHead={selectedHead}
+                    selectedTail={selectedTail}
+                    onEntityClick={handleEntityClick}
+                    onSelectionChange={workspaceStep === 'entities' ? setSelection : undefined}
+                    entityRefs={entityRefs}
+                    relationMode={workspaceStep === 'relations'}
+                  />
                 </div>
 
                 {/* Entity chip legend */}
                 {entities.length > 0 && (
                   <div className="bg-white rounded-xl border border-surface-200 p-3">
                     <p className="text-[11px] font-semibold text-surface-400 uppercase tracking-wide mb-2">
-                      Entities ({entities.length}) — click để chọn HEAD/TAIL
+                      {workspaceStep === 'relations'
+                        ? `Entities (${entities.length}) — click để chọn HEAD/TAIL`
+                        : `Entities (${entities.length})`}
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {entities.map((ent) => {
@@ -731,8 +958,10 @@ export default function RelationWorkspace() {
                         return (
                           <button
                             key={ent.id}
-                            onClick={() => handleEntityClick(ent)}
-                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all"
+                            onClick={() => {
+                              if (workspaceStep === 'relations') handleEntityClick(ent);
+                            }}
+                            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${workspaceStep === 'relations' ? 'cursor-pointer' : 'cursor-default'}`}
                             style={{
                               backgroundColor: `rgba(${rgb}, 0.15)`,
                               color: ent.color,
@@ -818,6 +1047,78 @@ export default function RelationWorkspace() {
 
         {/* RIGHT: Relation editor */}
         <div className="w-full xl:w-72 xl:shrink-0 bg-white border-t xl:border-t-0 xl:border-l border-surface-200 flex flex-col">
+          {workspaceStep === 'entities' ? (
+            <>
+              <div className="px-4 py-3 border-b border-surface-100">
+                <h2 className="text-sm font-semibold text-surface-800">Gán entity</h2>
+                <p className="text-xs text-surface-400 mt-0.5">Bôi đen text rồi chọn nhãn NER</p>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
+                  <p className="text-xs font-semibold text-surface-500 uppercase tracking-wide mb-2">
+                    Text đã chọn
+                  </p>
+                  {selection ? (
+                    <p className="text-sm font-medium text-surface-800 leading-6">"{selection.selectedText}"</p>
+                  ) : (
+                    <p className="text-xs text-surface-400 italic">Chưa chọn text</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-surface-500 mb-1.5 uppercase tracking-wide">
+                    Nhãn NER
+                  </label>
+                  {nerLabelOptions.length === 0 ? (
+                    <p className="text-xs text-surface-400 italic">Chưa có nhãn NER được cấu hình.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {nerLabelOptions.map((opt) => (
+                        <button
+                          key={opt.id}
+                          onClick={() => void handleCreateEntity(opt)}
+                          disabled={!selection || saving}
+                          className="px-2.5 py-1 rounded-lg text-xs font-semibold transition-all border disabled:opacity-40 disabled:cursor-not-allowed"
+                          style={selection && !saving
+                            ? { backgroundColor: opt.color, borderColor: opt.color, color: 'white' }
+                            : { borderColor: '#e2e8f0', color: opt.color, backgroundColor: 'white' }
+                          }
+                        >
+                          {opt.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {entities.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <p className="text-xs font-semibold text-surface-500 uppercase tracking-wide">Entity đã gán</p>
+                      <span className="px-1.5 py-0.5 rounded-full bg-surface-100 text-surface-500 text-[10px] font-bold">{entities.length}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {entities.map((ent) => (
+                        <div key={ent.id} className="rounded-xl border border-surface-200 bg-surface-50 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium text-surface-800 truncate">{ent.text}</span>
+                            <span
+                              className="px-2 py-0.5 rounded-md font-semibold text-white text-[11px] shrink-0"
+                              style={{ backgroundColor: ent.color }}
+                            >
+                              {ent.label}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
           <div className="px-4 py-3 border-b border-surface-100">
             <h2 className="text-sm font-semibold text-surface-800">Gán quan hệ</h2>
             <p className="text-xs text-surface-400 mt-0.5">Chọn HEAD → TAIL → loại quan hệ</p>
@@ -983,6 +1284,8 @@ export default function RelationWorkspace() {
               </div>
             )}
           </div>
+            </>
+          )}
         </div>
       </div>
     </div>

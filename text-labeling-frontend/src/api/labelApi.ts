@@ -5,6 +5,7 @@ import type {
   LabelSet,
   LabelSetListResponse,
   CreateLabelPayload,
+  LabelGroup,
   LabelItem,
 } from '../types';
 
@@ -54,6 +55,18 @@ export const labelApi = {
   ): Promise<LabelSet> => {
     const { data } = await axiosClient.put<LabelSet>(
       `/api/v1/projects/${projectId}/label-sets/${labelSetId}`,
+      payload
+    );
+    return data;
+  },
+
+  createLabelGroup: async (
+    projectId: string,
+    labelSetId: string,
+    payload: { name: string; sort_order?: number }
+  ): Promise<LabelGroup> => {
+    const { data } = await axiosClient.post<LabelGroup>(
+      `/api/v1/projects/${projectId}/label-sets/${labelSetId}/groups`,
       payload
     );
     return data;
