@@ -87,6 +87,8 @@ function getProjectsErrorMessage(error: unknown) {
 export default function Projects() {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.roles?.some((r) => r.toLowerCase().includes('admin'));
+  const isProjectOwner = user?.roles?.some((r) => r.toLowerCase().includes('project_owner'));
+  const canCreateProject = isAdmin || isProjectOwner;
 
   const [projects, setProjects]   = useState<Project[]>([]);
   const [total, setTotal]         = useState(0);
@@ -212,7 +214,7 @@ export default function Projects() {
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
-          {isAdmin && (
+          {canCreateProject && (
             <button
               onClick={() => setShowCreate(true)}
               className="btn-primary"
