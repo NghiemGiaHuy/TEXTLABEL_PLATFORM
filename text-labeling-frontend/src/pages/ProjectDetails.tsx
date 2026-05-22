@@ -99,6 +99,19 @@ function isApprovedTask(task: Pick<Task, 'status' | 'task_status'>): boolean {
   return getTaskLifecycleStatus(task) === 'approved';
 }
 
+function isAnnotateTaskOpen(task: Pick<Task, 'status' | 'task_status' | 'assignment_status'>): boolean {
+  const lifecycleStatus = getTaskLifecycleStatus(task);
+  const assignmentStatus = task.assignment_status ?? task.status;
+  return (
+    ['todo', 'in_progress', 'rework'].includes(lifecycleStatus) ||
+    ['not_started', 'in_progress'].includes(assignmentStatus)
+  );
+}
+
+function isAnnotateTaskCompleted(task: Pick<Task, 'status' | 'task_status' | 'assignment_status'>): boolean {
+  return ['submitted', 'approved'].includes(getTaskLifecycleStatus(task));
+}
+
 // ─── Tab types ──────────────────────────────────────────────
 type TabKey = 'overview' | 'data_type' | 'labels' | 'datasets' | 'tasks' | 'reviews' | 'completed_tasks' | 'assign';
 type BadgeVariant = 'red' | 'green' | undefined;
@@ -243,7 +256,8 @@ export default function ProjectDetails() {
   const totalLabels = labelSets.reduce((sum, ls) => sum + ls.labels.length, 0);
   const totalSamples = project.total_samples ?? datasets.reduce((sum, ds) => sum + ds.total_samples, 0);
 
-  const pendingReviewCount = tasks.filter((t) => getTaskLifecycleStatus(t) === 'submitted').length;
+  const submittedTaskCount = tasks.filter((t) => getTaskLifecycleStatus(t) === 'submitted').length;
+  const pendingReviewCount = Math.max(project.pending_review_samples ?? 0, submittedTaskCount);
   const approvedTaskCount = tasks.filter(isApprovedTask).length;
 
   // ─── Role-aware badge computation ───────────────────────
@@ -251,13 +265,15 @@ export default function ProjectDetails() {
     ? members.find((m) => m.user_id === user.id)?.role_in_project
     : undefined;
 
+  const isAdmin = user?.roles?.some((r) => r.toLowerCase().includes('admin')) ?? false;
+  const isProjectOwner = myProjectRole === 'project_owner';
   const myAssignedTasks = tasks.filter((t) => t.assignee_id === user?.id);
+  const annotateBadgeTasks = isAdmin || isProjectOwner ? tasks : myAssignedTasks;
   const tasksBadge: BadgeVariant =
-    myProjectRole === 'annotator'
-      ? myAssignedTasks.some((t) => ['todo', 'in_progress', 'rework'].includes(t.status))
+    annotateBadgeTasks.length > 0 && (myProjectRole === 'annotator' || isProjectOwner || isAdmin)
+      ? annotateBadgeTasks.some(isAnnotateTaskOpen)
         ? 'red'
-        : myAssignedTasks.length > 0 &&
-          myAssignedTasks.every((t) => ['submitted', 'approved'].includes(getTaskLifecycleStatus(t)))
+        : annotateBadgeTasks.every(isAnnotateTaskCompleted)
         ? 'green'
         : undefined
       : undefined;
