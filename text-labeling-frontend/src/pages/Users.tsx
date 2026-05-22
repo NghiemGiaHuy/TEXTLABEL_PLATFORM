@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Eye,
+  EyeOff,
   KeyRound,
   Loader2,
   Lock,
@@ -700,6 +701,7 @@ function CreateUserModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -711,6 +713,7 @@ function CreateUserModal({
       setSelectedRoles([]);
       setError('');
       setSubmitted(false);
+      setShowPassword(false);
       setSubmitting(false);
       userApi.getRoles().then((res) => setRoles(res.roles)).catch(() => {});
     }, 0);
@@ -798,21 +801,36 @@ function CreateUserModal({
         </FieldLabel>
 
         <FieldLabel label="Mật khẩu" required>
-          <input
-            type="password"
-            required
-            minLength={8}
-            maxLength={128}
-            autoComplete="new-password"
-            placeholder="Tối thiểu 8 ký tự, có chữ hoa, chữ thường và số"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            aria-invalid={!!passwordError}
-            aria-describedby={
-              passwordError ? 'create-user-password-error' : undefined
-            }
-            className={inputClass(!!passwordError)}
-          />
+          <div className="relative">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              required
+              minLength={8}
+              maxLength={128}
+              autoComplete="new-password"
+              placeholder="Tối thiểu 8 ký tự, có chữ hoa, chữ thường và số"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              aria-invalid={!!passwordError}
+              aria-describedby={
+                passwordError ? 'create-user-password-error' : undefined
+              }
+              className={inputClass(!!passwordError, 'pr-11')}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((visible) => !visible)}
+              title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+              aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-700 transition-colors cursor-pointer"
+            >
+              {showPassword ? (
+                <EyeOff className="w-4 h-4" />
+              ) : (
+                <Eye className="w-4 h-4" />
+              )}
+            </button>
+          </div>
           <FieldError id="create-user-password-error" message={passwordError} />
         </FieldLabel>
 
