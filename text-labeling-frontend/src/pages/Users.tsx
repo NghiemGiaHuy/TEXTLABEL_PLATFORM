@@ -83,6 +83,8 @@ const EMPTY_ROLE_COUNTS: UserRoleCounts = {
   reviewer: 0,
 };
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function normalizeRole(name: string) {
   return name.toLowerCase();
 }
@@ -115,6 +117,33 @@ function getErrorMessage(err: unknown, fallback: string) {
       .join('; ');
   }
   return typeof detail === 'string' ? detail : fallback;
+}
+
+function getEmailValidationError(value: string, showRequired = false) {
+  const email = value.trim();
+  if (!email) return showRequired ? 'Vui lòng nhập email.' : '';
+  if (!EMAIL_PATTERN.test(email)) return 'Email không đúng định dạng.';
+  return '';
+}
+
+function getPasswordValidationError(value: string, showRequired = false) {
+  if (!value) return showRequired ? 'Vui lòng nhập mật khẩu.' : '';
+  if (value.length < 8) return 'Mật khẩu cần tối thiểu 8 ký tự.';
+  if (value.length > 128) return 'Mật khẩu tối đa 128 ký tự.';
+  if (!/[A-Z]/.test(value) || !/[a-z]/.test(value) || !/\d/.test(value)) {
+    return 'Mật khẩu cần có chữ hoa, chữ thường và số.';
+  }
+  return '';
+}
+
+function inputClass(hasError: boolean, extra = '') {
+  return [
+    'input-field',
+    hasError && 'border-red-400 focus:border-red-500 focus:ring-red-500/20',
+    extra,
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 function formatDate(value: string | null, withTime = false) {
@@ -611,13 +640,18 @@ function RoleOptionGrid({
   roles,
   selectedRoles,
   onToggle,
+  selectionMode = 'multiple',
 }: {
   roles: Role[];
   selectedRoles: string[];
   onToggle: (roleId: string) => void;
+  selectionMode?: 'single' | 'multiple';
 }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+    <div
+      role={selectionMode === 'single' ? 'radiogroup' : 'group'}
+      className="grid grid-cols-1 sm:grid-cols-2 gap-2"
+    >
       {roles.map((role) => {
         const roleName = normalizeRole(role.name);
         const isSelected = selectedRoles.includes(role.id);
@@ -629,6 +663,9 @@ function RoleOptionGrid({
             key={role.id}
             type="button"
             onClick={() => onToggle(role.id)}
+            role={selectionMode === 'single' ? 'radio' : undefined}
+            aria-checked={selectionMode === 'single' ? isSelected : undefined}
+            aria-pressed={selectionMode === 'multiple' ? isSelected : undefined}
             className={`flex items-center gap-2.5 p-3 rounded-lg border-2 text-left transition-all duration-150 ${
               isSelected
                 ? `${style.bg} border-current ${style.text}`
@@ -662,6 +699,7 @@ function CreateUserModal({
   const [roles, setRoles] = useState<Role[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -672,6 +710,8 @@ function CreateUserModal({
       setPassword('');
       setSelectedRoles([]);
       setError('');
+      setSubmitted(false);
+      setSubmitting(false);
       userApi.getRoles().then((res) => setRoles(res.roles)).catch(() => {});
     }, 0);
 
@@ -679,17 +719,26 @@ function CreateUserModal({
   }, [isOpen]);
 
   const toggleRole = (roleId: string) => {
-    setSelectedRoles((prev) =>
-      prev.includes(roleId)
-        ? prev.filter((id) => id !== roleId)
-        : [...prev, roleId]
-    );
+    setSelectedRoles((prev) => (prev[0] === roleId ? [] : [roleId]));
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!email || !fullName || !password || selectedRoles.length === 0) {
-      setError('Vui lòng nhập đủ thông tin và chọn ít nhất một vai trò.');
+    setSubmitted(true);
+
+    const nextEmailError = getEmailValidationError(email, true);
+    const nextPasswordError = getPasswordValidationError(password, true);
+
+    if (!fullName.trim()) {
+      setError('Vui lòng nhập họ tên.');
+      return;
+    }
+    if (nextEmailError || nextPasswordError) {
+      setError('');
+      return;
+    }
+    if (selectedRoles.length === 0) {
+      setError('Vui lòng chọn một vai trò.');
       return;
     }
     setSubmitting(true);
@@ -697,8 +746,8 @@ function CreateUserModal({
 
     try {
       await userApi.createUser({
-        email,
-        full_name: fullName,
+        email: email.trim(),
+        full_name: fullName.trim(),
         password,
         role_ids: selectedRoles,
       });
@@ -710,9 +759,15 @@ function CreateUserModal({
     }
   };
 
+  const emailError = getEmailValidationError(email, submitted || email.length > 0);
+  const passwordError = getPasswordValidationError(
+    password,
+    submitted || password.length > 0
+  );
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Thêm user">
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         {error && <InlineError message={error} />}
 
         <FieldLabel label="Họ tên" required>
@@ -731,11 +786,15 @@ function CreateUserModal({
           <input
             type="email"
             required
+            autoComplete="email"
             placeholder="user@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="input-field"
+            aria-invalid={!!emailError}
+            aria-describedby={emailError ? 'create-user-email-error' : undefined}
+            className={inputClass(!!emailError)}
           />
+          <FieldError id="create-user-email-error" message={emailError} />
         </FieldLabel>
 
         <FieldLabel label="Mật khẩu" required>
@@ -743,11 +802,18 @@ function CreateUserModal({
             type="password"
             required
             minLength={8}
+            maxLength={128}
+            autoComplete="new-password"
             placeholder="Tối thiểu 8 ký tự, có chữ hoa, chữ thường và số"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="input-field"
+            aria-invalid={!!passwordError}
+            aria-describedby={
+              passwordError ? 'create-user-password-error' : undefined
+            }
+            className={inputClass(!!passwordError)}
           />
+          <FieldError id="create-user-password-error" message={passwordError} />
         </FieldLabel>
 
         <div>
@@ -758,10 +824,11 @@ function CreateUserModal({
             roles={roles}
             selectedRoles={selectedRoles}
             onToggle={toggleRole}
+            selectionMode="single"
           />
           {selectedRoles.length === 0 && (
             <p className="text-xs text-surface-400 mt-1.5">
-              Chọn ít nhất một vai trò
+              Chọn một vai trò
             </p>
           )}
         </div>
@@ -1065,6 +1132,17 @@ function InlineError({ message }: { message: string }) {
       <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
       <p className="text-sm text-red-700">{message}</p>
     </div>
+  );
+}
+
+function FieldError({ id, message }: { id: string; message: string }) {
+  if (!message) return null;
+
+  return (
+    <p id={id} className="mt-1.5 flex items-center gap-1.5 text-xs text-red-600">
+      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+      {message}
+    </p>
   );
 }
 
