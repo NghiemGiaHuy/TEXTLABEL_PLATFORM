@@ -505,6 +505,14 @@ function OverviewTab({
   const { showToast } = useToast();
   const { user } = useAuthStore();
   const isAdmin = user?.roles?.some((r: string) => r.toLowerCase().includes('admin'));
+  const isProjectOwner =
+    project.created_by === user?.id ||
+    members.some(
+      (m) =>
+        m.user_id === user?.id &&
+        m.role_in_project.toLowerCase() === 'project_owner'
+    );
+  const canAddMembers = isAdmin || isProjectOwner;
 
   const handleRemoveMember = async (m: ProjectMember) => {
     if (!await confirm(`Xoá thành viên "${m.full_name}" khỏi dự án?`, { title: 'Xóa thành viên', variant: 'danger', confirmText: 'Xóa' })) return;
@@ -681,7 +689,7 @@ function OverviewTab({
       <div className="bg-surface-0 rounded-xl border border-surface-200 shadow-subtle overflow-hidden">
         <div className="px-5 py-4 border-b border-surface-100 flex items-center justify-between">
           <h3 className="text-base font-semibold text-surface-900">Thành viên dự án</h3>
-          {isAdmin && (
+          {canAddMembers && (
             <button
               onClick={() => setShowAddMember(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 transition-colors cursor-pointer"
