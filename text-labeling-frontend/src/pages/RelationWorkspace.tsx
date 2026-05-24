@@ -770,10 +770,14 @@ export default function RelationWorkspace() {
     if (!await confirm('Nộp task này để review?', { title: 'Nộp task', confirmText: 'Nộp' })) return;
     setSubmitLoading(true);
     try {
-      if (workspaceStep === 'entities') {
-        await handleEntityStepSave(false);
-      } else {
-        await handleSave();
+      const currentSample = task?.task_samples[currentSampleIndex];
+      const currentSampleComplete = ['done', 'submitted', 'approved'].includes(currentSample?.status ?? '');
+      if (!currentSampleComplete) {
+        if (workspaceStep === 'entities') {
+          await handleEntityStepSave(false);
+        } else {
+          await handleSave();
+        }
       }
       await annotationApi.submitTask(taskId);
       showToast('success', 'Đã chuyển task cho reviewer');
