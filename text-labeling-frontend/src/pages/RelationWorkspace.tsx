@@ -11,11 +11,11 @@ import {
   Send,
   Trash2,
   Plus,
-  Search,
   Clock,
   Edit2,
   X,
   CheckCircle2,
+  Hash,
 } from 'lucide-react';
 import { annotationApi } from '../api/annotationApi';
 import { buildApiUrl } from '../api/apiConfig';
@@ -109,6 +109,7 @@ function restoreRelations(
 }
 
 type SampleStatus = 'pending' | 'annotated' | 'done' | 'submitted' | 'approved' | 'rejected' | 'rework';
+type SampleStatusFilter = 'all' | 'pending' | 'annotated' | 'done' | 'rejected' | 'approved';
 
 const STATUS_CFG: Record<SampleStatus, { label: string; bg: string; text: string; dot: string }> = {
   pending:   { label: 'Chưa làm',   bg: 'bg-surface-100', text: 'text-surface-500', dot: 'bg-surface-400' },
@@ -119,6 +120,23 @@ const STATUS_CFG: Record<SampleStatus, { label: string; bg: string; text: string
   rejected:  { label: 'Từ chối',    bg: 'bg-red-50',      text: 'text-red-700',     dot: 'bg-red-500'     },
   rework:    { label: 'Từ chối',    bg: 'bg-red-50',      text: 'text-red-700',     dot: 'bg-red-500'     },
 };
+
+const SAMPLE_STATUS_FILTERS: Array<{ value: SampleStatusFilter; label: string }> = [
+  { value: 'all', label: 'Tất cả' },
+  { value: 'pending', label: 'Chưa làm' },
+  { value: 'annotated', label: 'Đang làm' },
+  { value: 'done', label: 'Đã xong' },
+  { value: 'rejected', label: 'Bị từ chối' },
+  { value: 'approved', label: 'Đã duyệt' },
+];
+
+function getSampleStatusFilter(status: string): SampleStatusFilter {
+  if (status === 'approved') return 'approved';
+  if (status === 'rejected' || status === 'rework') return 'rejected';
+  if (status === 'done' || status === 'submitted') return 'done';
+  if (status === 'annotated' || status === 'in_progress') return 'annotated';
+  return 'pending';
+}
 
 function isSampleProcessed(status: string) {
   return !['pending', 'todo'].includes(status);
@@ -404,7 +422,8 @@ export default function RelationWorkspace() {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [doneLoading, setDoneLoading] = useState(false);
   const [error, setError] = useState('');
-  const [search, setSearch] = useState('');
+  const [sampleNumberQuery, setSampleNumberQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<SampleStatusFilter>('all');
 
   // Per-sample relation state
   const [entities, setEntities] = useState<Entity[]>([]);
@@ -673,6 +692,43 @@ export default function RelationWorkspace() {
     }
   }, [taskId, task, sampleData, currentSampleIndex, relations, entities, relTypeOptions, loadSample, showToast]);
 
+  const handleClearLabels = useCallback(async () => {
+    if (!taskId || !task || !sampleData) return;
+    const sample = task.task_samples[currentSampleIndex];
+    if (!sample) return;
+    if (sampleData.annotations.length === 0 && relations.length === 0) return;
+
+    setSaving(true);
+    try {
+      for (const ann of sampleData.annotations) {
+        await annotationApi.deleteAnnotation(taskId, sample.id, ann.id);
+      }
+
+      await annotationApi.saveDraft(taskId, sample.id, {
+        ...(sampleData.draft?.draft_data ?? {}),
+        kind: 'relation_extraction',
+        entityStepSaved: false,
+        relations: [],
+      });
+
+      setEntities([]);
+      setRelations([]);
+      setSelectedHead(null);
+      setSelectedTail(null);
+      setSelectedRelLabelId('');
+      setEditingRelId(null);
+      setSelection(null);
+      window.getSelection()?.removeAllRanges();
+      await loadSample(taskId, sample);
+      showToast('success', 'Đã xoá nhãn NER và quan hệ');
+    } catch (err) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      showToast('error', e?.response?.data?.detail || 'Xoá nhãn thất bại');
+    } finally {
+      setSaving(false);
+    }
+  }, [taskId, task, sampleData, currentSampleIndex, relations.length, loadSample, showToast]);
+
   // ── Mark sample done/undone ─────────────────────────────────
   const handleMarkDone = useCallback(async () => {
     if (!taskId || !task) return;
@@ -752,13 +808,22 @@ export default function RelationWorkspace() {
   const samples: TaskSample[] = task.task_samples;
   const totalSamples = samples.length;
   const doneCount = samples.filter((s) => isSampleProcessed(s.status)).length;
+  const sampleNumber = Number(sampleNumberQuery.trim());
+  const hasSampleNumber = sampleNumberQuery.trim() !== '';
 
   const filteredSamples = samples
     .map((s, i) => ({ s, i }))
-    .filter(({ s }) => !search || (s.content ?? '').toLowerCase().includes(search.toLowerCase()));
+    .filter(({ s, i }) => {
+      const numberMatches = !hasSampleNumber
+        || (Number.isInteger(sampleNumber) && sampleNumber === i + 1);
+      const statusMatches = statusFilter === 'all'
+        || getSampleStatusFilter(s.status) === statusFilter;
+      return numberMatches && statusMatches;
+    });
 
   const headEntity = entities.find((e) => e.id === selectedHead);
   const tailEntity = entities.find((e) => e.id === selectedTail);
+  const canClearLabels = Boolean(sampleData && (sampleData.annotations.length > 0 || relations.length > 0));
 
   return (
     <div className="-m-6 flex flex-col min-h-[calc(100vh-64px)] xl:h-[calc(100vh-64px)] bg-surface-50 xl:overflow-hidden">
@@ -802,22 +867,41 @@ export default function RelationWorkspace() {
       <div className="flex flex-col xl:flex-row flex-1 min-h-0">
 
         {/* LEFT: Sample list */}
-        <div className="w-full xl:w-64 xl:shrink-0 bg-white border-b xl:border-b-0 xl:border-r border-surface-200 flex flex-col max-h-72 xl:max-h-none">
-          <div className="p-3 border-b border-surface-100">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-400" />
-              <input
-                type="text"
-                placeholder="Tìm kiếm..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-surface-200 focus:outline-none focus:ring-2 focus:ring-brand-300 bg-surface-50"
-              />
-            </div>
+        <div className="w-full xl:w-60 xl:shrink-0 bg-white border-b xl:border-b-0 xl:border-r border-surface-200 flex flex-col max-h-64 xl:max-h-none">
+          <div className="px-3 py-2.5 border-b border-surface-100 bg-surface-50/60 flex items-center justify-between">
+            <span className="text-xs font-semibold text-surface-500 uppercase tracking-wide">Samples</span>
+            <span className="text-[10px] font-medium text-surface-400 bg-surface-100 px-2 py-0.5 rounded-full">
+              {filteredSamples.length === samples.length ? samples.length : `${filteredSamples.length}/${samples.length}`}
+            </span>
+          </div>
+          <div className="px-3 py-2.5 border-b border-surface-100 bg-white flex items-center gap-2">
+            <input
+              value={sampleNumberQuery}
+              onChange={(event) => setSampleNumberQuery(event.target.value.replace(/\D/g, ''))}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="Số"
+              aria-label="Tìm theo thứ tự sample"
+              className="w-16 min-w-0 rounded-lg border border-surface-200 bg-white px-2.5 py-1.5 text-xs font-medium text-surface-700 placeholder:text-surface-400 outline-none transition-colors focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+            />
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as SampleStatusFilter)}
+              aria-label="Lọc theo trạng thái sample"
+              className="min-w-0 flex-1 rounded-lg border border-surface-200 bg-white px-2.5 py-1.5 text-xs font-medium text-surface-700 outline-none transition-colors focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+            >
+              {SAMPLE_STATUS_FILTERS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
           </div>
 
           <div className="flex-1 overflow-y-auto">
-            {filteredSamples.map(({ s, i }) => {
+            {filteredSamples.length === 0 ? (
+              <div className="px-3 py-6 text-center text-xs text-surface-400">
+                Không có sample phù hợp
+              </div>
+            ) : filteredSamples.map(({ s, i }) => {
               const cfg = STATUS_CFG[s.status as SampleStatus] ?? STATUS_CFG.pending;
               const isActive = i === currentSampleIndex;
               return (
@@ -828,39 +912,24 @@ export default function RelationWorkspace() {
                     isActive ? 'bg-brand-50 border-l-2 border-l-brand-500' : 'hover:bg-surface-50'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-1.5">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-surface-700 truncate">
-                        {(s.content ?? '').slice(0, 55)}{(s.content ?? '').length > 55 ? '…' : ''}
-                      </p>
-                      <div className={`mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${cfg.bg} ${cfg.text}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-                        {cfg.label}
-                      </div>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Hash className="w-3 h-3 text-surface-400 shrink-0" />
+                      <span className={`text-xs font-semibold ${isActive ? 'text-brand-700' : 'text-surface-600'}`}>
+                        Sample {i + 1}
+                      </span>
                     </div>
-                    <span className="text-[10px] text-surface-400 shrink-0 mt-0.5">#{i + 1}</span>
+                    <span className={`inline-flex items-center gap-1 px-1.5 py-px rounded-full text-[10px] font-medium shrink-0 ${cfg.bg} ${cfg.text}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                      {cfg.label}
+                    </span>
                   </div>
+                  <p className="text-[11px] text-surface-400 truncate">
+                    {(s.content ?? '').slice(0, 50)}{(s.content ?? '').length > 50 ? '...' : ''}
+                  </p>
                 </button>
               );
             })}
-          </div>
-
-          <div className="p-3 border-t border-surface-100 flex items-center justify-between">
-            <button
-              onClick={() => goTo(currentSampleIndex - 1)}
-              disabled={currentSampleIndex === 0}
-              className="p-1.5 rounded-lg border border-surface-200 text-surface-500 hover:bg-surface-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-xs text-surface-500 font-medium">{currentSampleIndex + 1} / {totalSamples}</span>
-            <button
-              onClick={() => goTo(currentSampleIndex + 1)}
-              disabled={currentSampleIndex >= totalSamples - 1}
-              className="p-1.5 rounded-lg border border-surface-200 text-surface-500 hover:bg-surface-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
           </div>
         </div>
 
@@ -885,27 +954,45 @@ export default function RelationWorkspace() {
                       );
                     })()}
                   </div>
-                  <button
-                    onClick={() => {
-                      if (workspaceStep === 'entities') {
-                        void handleEntityStepSave();
-                      } else {
-                        void handleSave();
-                      }
-                    }}
-                    disabled={saving}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-200 text-surface-600 hover:bg-surface-50 transition-colors disabled:opacity-50"
-                  >
-                    {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                    {workspaceStep === 'entities' ? 'Lưu' : 'Lưu quan hệ'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {workspaceStep === 'relations' && (
+                      <button
+                        onClick={() => {
+                          setWorkspaceStep('entities');
+                          setSelectedHead(null);
+                          setSelectedTail(null);
+                          setSelectedRelLabelId('');
+                          setEditingRelId(null);
+                        }}
+                        disabled={saving}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-200 text-surface-600 hover:bg-surface-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        NER label
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        if (workspaceStep === 'entities') {
+                          void handleEntityStepSave();
+                        } else {
+                          void handleSave();
+                        }
+                      }}
+                      disabled={saving}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-200 text-surface-600 hover:bg-surface-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                      {workspaceStep === 'entities' ? 'Lưu NER label' : 'Lưu quan hệ'}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Instruction */}
                 <div className="bg-brand-50 border border-brand-100 rounded-xl px-4 py-2.5 text-xs text-brand-700">
                   {workspaceStep === 'entities' ? (
                     <>
-                      Bôi đen text gốc, chọn nhãn NER ở panel phải, rồi nhấn <strong>Lưu</strong> để chuyển sang gán quan hệ.
+                      Bôi đen text gốc, chọn nhãn NER ở panel phải, rồi nhấn <strong>Lưu NER label</strong> để chuyển sang gán quan hệ.
                     </>
                   ) : (
                     <>
@@ -1004,13 +1091,8 @@ export default function RelationWorkspace() {
                 </button>
 
                 <button
-                  onClick={() => {
-                    setRelations([]);
-                    setSelectedHead(null);
-                    setSelectedTail(null);
-                    setSelectedRelLabelId('');
-                  }}
-                  disabled={relations.length === 0}
+                  onClick={() => void handleClearLabels()}
+                  disabled={!canClearLabels || saving}
                   className="flex shrink-0 items-center justify-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg border border-surface-200 text-sm font-medium text-surface-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -1221,46 +1303,47 @@ export default function RelationWorkspace() {
                           isEditing ? 'border-brand-300 bg-brand-50' : 'border-surface-200 bg-surface-50'
                         }`}
                       >
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className="px-2 py-0.5 rounded-md font-semibold text-white text-[11px] shrink-0"
-                            style={{ backgroundColor: head?.color ?? '#6366F1' }}
-                          >
-                            {head?.text ?? '?'}
-                          </span>
-                          <div className="flex flex-col items-center flex-1 min-w-0">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span
+                                className="px-2 py-0.5 rounded-md font-semibold text-white text-[11px] min-w-0 truncate"
+                                style={{ backgroundColor: head?.color ?? '#6366F1' }}
+                              >
+                                {head?.text ?? '?'}
+                              </span>
+                              <ChevronRight className="w-3 h-3 text-surface-400 shrink-0" />
+                              <span
+                                className="px-2 py-0.5 rounded-md font-semibold text-white text-[11px] min-w-0 truncate"
+                                style={{ backgroundColor: tail?.color ?? '#F97316' }}
+                              >
+                                {tail?.text ?? '?'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => handleEditRelation(rel)}
+                                className="p-1 rounded text-surface-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteRelation(rel.id)}
+                                className="p-1 rounded text-surface-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="h-px flex-1 min-w-4" style={{ backgroundColor: rel.color }} />
                             <span
-                              className="text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white mb-0.5 truncate max-w-full"
+                              className="max-w-full truncate text-[10px] font-bold px-2 py-1 rounded-full text-white"
                               style={{ backgroundColor: rel.color }}
                             >
                               {rel.relationType}
                             </span>
-                            <div className="flex w-full items-center">
-                              <div className="flex-1 h-px" style={{ backgroundColor: rel.color }} />
-                              <svg width="5" height="5" viewBox="0 0 5 5" style={{ color: rel.color }}>
-                                <path d="M0 0 L5 2.5 L0 5 Z" fill="currentColor" />
-                              </svg>
-                            </div>
-                          </div>
-                          <span
-                            className="px-2 py-0.5 rounded-md font-semibold text-white text-[11px] shrink-0"
-                            style={{ backgroundColor: tail?.color ?? '#F97316' }}
-                          >
-                            {tail?.text ?? '?'}
-                          </span>
-                          <div className="flex items-center gap-1 ml-1 shrink-0">
-                            <button
-                              onClick={() => handleEditRelation(rel)}
-                              className="p-1 rounded text-surface-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
-                            >
-                              <Edit2 className="w-3 h-3" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteRelation(rel.id)}
-                              className="p-1 rounded text-surface-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
+                            <div className="h-px flex-1 min-w-4" style={{ backgroundColor: rel.color }} />
                           </div>
                         </div>
                       </div>
