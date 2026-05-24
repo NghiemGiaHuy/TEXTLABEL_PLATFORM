@@ -6,7 +6,9 @@
       "Bash(npx tsc *)",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Admin\\\\textLabel_Platform\" -Recurse -Directory)",
       "Bash(Select-Object -ExpandProperty FullName)",
-      "Bash(xargs grep -l \"CompletedTasksTab\")"
+      "Bash(xargs grep -l \"CompletedTasksTab\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Admin\\\\textLabel_Platform\" -Directory)",
+      "Bash(Select-Object Name)"
     ]
   }
 }
