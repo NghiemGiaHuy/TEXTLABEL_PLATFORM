@@ -9,7 +9,7 @@ import {
   type MutableRefObject,
   type RefObject,
 } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useOutletContext } from 'react-router-dom';
 import {
   ArrowLeft,
   ChevronLeft,
@@ -312,10 +312,11 @@ function ReviewSampleListPanel({
 
     return samples
       .map((sample, index) => ({ sample, index }))
-      .filter(({ sample, index }) => {
+      .filter(({ sample, index: i }) => {
         const newlyFixed = sample.status === 'submitted' && !!rejectionMap[sample.id];
+        const displayNumber = sample.sample_order ?? (i + 1);
         const numberMatches = !hasSampleNumber
-          || (Number.isInteger(sampleNumber) && sampleNumber === index + 1);
+          || (Number.isInteger(sampleNumber) && sampleNumber > 0 && sampleNumber === displayNumber);
         const statusMatches = statusFilter === 'all'
           || getReviewSampleStatusFilter(sample.status, newlyFixed) === statusFilter;
         return numberMatches && statusMatches;
@@ -372,7 +373,7 @@ function ReviewSampleListPanel({
                 <div className="flex items-center gap-1.5 min-w-0">
                   <Hash className="w-3 h-3 text-surface-400 shrink-0" />
                   <span className={`text-xs font-semibold ${isActive ? 'text-brand-700' : 'text-surface-600'}`}>
-                    Sample {i + 1}
+                    Sample {s.sample_order ?? (i + 1)}
                   </span>
                 </div>
                 <span className={`inline-flex items-center gap-1 px-1.5 py-px rounded-full text-[10px] font-medium shrink-0 ${cfg.bg} ${cfg.text}`}>
@@ -445,6 +446,7 @@ function ReviewBottomBar({
 // ============================================================
 export default function ReviewWorkspace() {
   const { projectId, taskId } = useParams<{ projectId: string; taskId: string }>();
+  const { sidebarOpen } = useOutletContext<{ sidebarOpen: boolean }>();
   const { showToast } = useToast();
 
   const [task, setTask] = useState<TaskDetail | null>(null);
@@ -840,7 +842,7 @@ export default function ReviewWorkspace() {
           />
         </div>
 
-        <div className="w-full xl:w-72 xl:shrink-0 bg-white border-t xl:border-t-0 xl:border-l border-surface-200 flex flex-col overflow-hidden">
+        <div className={`w-full xl:shrink-0 bg-white border-t xl:border-t-0 xl:border-l border-surface-200 flex flex-col overflow-hidden transition-[width] duration-200 ${sidebarOpen ? 'xl:w-72' : 'xl:w-[360px]'}`}>
           {sampleDetail && (
             <ReviewPanel
               sampleDetail={sampleDetail}

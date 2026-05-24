@@ -1813,11 +1813,16 @@ class TaskService:
             sample_count = len(task.task_samples)
         except Exception:
             sample_count = 0
+        try:
+            dataset_name = task.dataset.name if task.dataset else None
+        except Exception:
+            dataset_name = None
         return self._build_task_response_raw(
             task=task,
             assignee_name=assignee_name,
             reviewer_name=reviewer_name,
             sample_count=sample_count,
+            dataset_name=dataset_name,
             assignment_status_override=assignment_status_override,
         )
 
@@ -1827,6 +1832,7 @@ class TaskService:
         assignee_name: Optional[str],
         reviewer_name: Optional[str],
         sample_count: int,
+        dataset_name: Optional[str] = None,
         assignment_status_override: Optional[str] = None,
     ) -> dict:
         """Build response dict without accessing ORM relationships."""
@@ -1856,6 +1862,7 @@ class TaskService:
             "label_set_id": task.label_set_id,
             "reviewer_id": task.reviewer_id,
             "reviewer_name": reviewer_name,
+            "dataset_name": dataset_name,
             "assigned_at": task.assigned_at,
             "started_at": task.started_at,
             "submitted_at": task.submitted_at,

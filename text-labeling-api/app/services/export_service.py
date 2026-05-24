@@ -68,9 +68,6 @@ class ExportService:
                 f"Must be approved_only or all."
             )
 
-        # Reject re-export when nothing changed
-        await self._check_duplicate_export(project_id, current_user.id, fmt, flt)
-
         # Build query for exportable data
         data = await self._collect_export_data(
             project_id=project_id,

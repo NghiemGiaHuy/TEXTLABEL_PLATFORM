@@ -521,9 +521,11 @@ class ReviewService:
         rejected_count: int,
     ) -> None:
         project_result = await self.db.execute(
-            select(Project.name).where(Project.id == task.project_id)
+            select(Project.name, Project.created_by).where(Project.id == task.project_id)
         )
-        project_name = project_result.scalar_one_or_none() or "dự án"
+        project_row = project_result.one_or_none()
+        project_name = project_row[0] if project_row else "dự án"
+        project_owner_id = project_row[1] if project_row else None
         actor_name = actor.full_name or actor.email
 
         if rejected_count:
@@ -553,6 +555,20 @@ class ReviewService:
             link=f"/workspace/{task.id}",
             actor_name=actor_name,
         )
+
+        if project_owner_id and project_owner_id != task.assignee_id:
+            await create_notification(
+                self.db,
+                user_id=project_owner_id,
+                type=NotificationType.EXPORT_READY,
+                title="Task sẵn sàng export",
+                message=(
+                    f"Task trong {project_name} đã được duyệt xong bởi {actor_name} "
+                    f"({approved_count} mẫu). Bạn có thể export dữ liệu."
+                ),
+                link=f"/projects/{task.project_id}?tab=completed_tasks",
+                actor_name=actor_name,
+            )
 
     async def _check_reviewer_access(
         self, task_id: UUID, user: User

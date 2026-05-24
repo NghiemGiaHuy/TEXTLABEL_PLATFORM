@@ -413,10 +413,10 @@ export default function ProjectDetails() {
         <DatasetsTab datasets={datasets} projectId={projectId!} onRefresh={fetchAll} />
       )}
       {activeTab === 'tasks' && (
-        <TasksTab tasks={tasks} projectId={projectId!} />
+        <TasksTab tasks={tasks} projectId={projectId!} canAnnotate={myProjectRole === 'annotator' || isAdmin} />
       )}
       {activeTab === 'reviews' && (
-        <ReviewsTab tasks={tasks} projectId={projectId!} />
+        <ReviewsTab tasks={tasks} projectId={projectId!} canReview={isReviewer || isAdmin} />
       )}
       {activeTab === 'completed_tasks' && (
         <CompletedTasksTab tasks={tasks} projectId={projectId!} />
@@ -1274,7 +1274,7 @@ function DatasetSamplesModal({
 // ─────────────────────────────────────────────────────────────
 // TASKS TAB
 // ─────────────────────────────────────────────────────────────
-function TasksTab({ tasks, projectId }: { tasks: Task[]; projectId: string }) {
+function TasksTab({ tasks, projectId, canAnnotate = true }: { tasks: Task[]; projectId: string; canAnnotate?: boolean }) {
   if (tasks.length === 0) {
     return (
       <EmptyTab
@@ -1344,7 +1344,7 @@ function TasksTab({ tasks, projectId }: { tasks: Task[]; projectId: string }) {
                   })}
                 </td>
                 <td className="px-5 py-3.5 text-right">
-                  <TaskActionButton task={task} projectId={projectId} />
+                  <TaskActionButton task={task} projectId={projectId} canAnnotate={canAnnotate} />
                 </td>
               </tr>
             ))}
@@ -1355,7 +1355,7 @@ function TasksTab({ tasks, projectId }: { tasks: Task[]; projectId: string }) {
   );
 }
 
-function TaskActionButton({ task, projectId }: { task: Task; projectId: string }) {
+function TaskActionButton({ task, projectId, canAnnotate = true }: { task: Task; projectId: string; canAnnotate?: boolean }) {
   if (isApprovedTask(task)) {
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-emerald-600 bg-emerald-50 border border-emerald-100">
@@ -1374,6 +1374,22 @@ function TaskActionButton({ task, projectId }: { task: Task; projectId: string }
         <Eye className="w-3 h-3" />
         Xem lại
         <ChevronRight className="w-3 h-3 opacity-50 group-hover:translate-x-0.5 transition-transform duration-150" />
+      </Link>
+    );
+  }
+
+  if (!canAnnotate) {
+    const workspacePath =
+      (task.annotation_type ?? task.task_type) === 'relation_extraction'
+        ? `/workspace-relation/${task.id}`
+        : `/workspace/${task.id}`;
+    return (
+      <Link
+        to={workspacePath}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-surface-600 bg-surface-100 hover:bg-surface-200 transition-colors"
+      >
+        <Eye className="w-3 h-3" />
+        Xem
       </Link>
     );
   }
@@ -1406,7 +1422,7 @@ function TaskActionButton({ task, projectId }: { task: Task; projectId: string }
 // ─────────────────────────────────────────────────────────────
 // REVIEWS TAB
 // ─────────────────────────────────────────────────────────────
-function ReviewsTab({ tasks, projectId }: { tasks: Task[]; projectId: string }) {
+function ReviewsTab({ tasks, projectId, canReview = true }: { tasks: Task[]; projectId: string; canReview?: boolean }) {
   const pendingTasks = tasks.filter((t) => getTaskLifecycleStatus(t) === 'submitted');
   const reworkTasks = tasks.filter((t) => getTaskLifecycleStatus(t) === 'rework');
 
@@ -1430,7 +1446,7 @@ function ReviewsTab({ tasks, projectId }: { tasks: Task[]; projectId: string }) 
             <h3 className="text-sm font-semibold text-surface-800">Chờ duyệt</h3>
             <span className="text-xs text-surface-400">{pendingTasks.length} task</span>
           </div>
-          <ReviewTaskTable tasks={pendingTasks} projectId={projectId} />
+          <ReviewTaskTable tasks={pendingTasks} projectId={projectId} canReview={canReview} />
         </div>
       )}
 
@@ -1442,7 +1458,7 @@ function ReviewsTab({ tasks, projectId }: { tasks: Task[]; projectId: string }) 
             <h3 className="text-sm font-semibold text-surface-800">Đang sửa lại</h3>
             <span className="text-xs text-surface-400">{reworkTasks.length} task</span>
           </div>
-          <ReviewTaskTable tasks={reworkTasks} projectId={projectId} />
+          <ReviewTaskTable tasks={reworkTasks} projectId={projectId} canReview={canReview} />
         </div>
       )}
     </div>
@@ -1474,12 +1490,13 @@ function CompletedTasksTab({ tasks, projectId }: { tasks: Task[]; projectId: str
   );
 }
 
-function ReviewTaskTable({ tasks, projectId }: { tasks: Task[]; projectId: string }) {
+function ReviewTaskTable({ tasks, projectId, canReview = true }: { tasks: Task[]; projectId: string; canReview?: boolean }) {
   return (
     <table className="w-full">
       <thead>
         <tr className="border-b border-surface-100">
           <Th>Task ID</Th>
+          <Th>Tên task</Th>
           <Th>Annotator</Th>
           <Th>Samples</Th>
           <Th>Status</Th>
@@ -1493,6 +1510,11 @@ function ReviewTaskTable({ tasks, projectId }: { tasks: Task[]; projectId: strin
             <td className="px-5 py-3.5">
               <span className="text-xs font-mono text-surface-500 bg-surface-50 px-2 py-0.5 rounded">
                 {task.id.slice(0, 8)}…
+              </span>
+            </td>
+            <td className="px-5 py-3.5 max-w-[160px]">
+              <span className="text-sm text-surface-800 truncate block" title={task.dataset_name ?? ''}>
+                {task.dataset_name || '—'}
               </span>
             </td>
             <td className="px-5 py-3.5">
@@ -1519,13 +1541,23 @@ function ReviewTaskTable({ tasks, projectId }: { tasks: Task[]; projectId: strin
             </td>
             <td className="px-5 py-3.5 text-right">
               {getTaskLifecycleStatus(task) === 'submitted' ? (
-                <Link
-                  to={`/review/${projectId}/${task.id}`}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 transition-colors"
-                >
-                  <Eye className="w-3 h-3" />
-                  Duyệt ngay
-                </Link>
+                canReview ? (
+                  <Link
+                    to={`/review/${projectId}/${task.id}`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 transition-colors"
+                  >
+                    <Eye className="w-3 h-3" />
+                    Duyệt ngay
+                  </Link>
+                ) : (
+                  <Link
+                    to={`/review/${projectId}/${task.id}`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-surface-600 bg-surface-100 hover:bg-surface-200 transition-colors"
+                  >
+                    <Eye className="w-3 h-3" />
+                    Xem
+                  </Link>
+                )
               ) : isApprovedTask(task) ? (
                 <Link
                   to={`/review/${projectId}/${task.id}`}

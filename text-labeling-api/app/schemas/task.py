@@ -216,6 +216,7 @@ class TaskResponse(BaseModel):
     label_set_id: Optional[UUID] = None
     reviewer_id: Optional[UUID] = None
     reviewer_name: Optional[str] = None
+    dataset_name: Optional[str] = None
     assigned_at: datetime
     started_at: Optional[datetime] = None
     submitted_at: Optional[datetime] = None

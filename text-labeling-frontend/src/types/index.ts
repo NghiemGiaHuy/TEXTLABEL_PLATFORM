@@ -211,6 +211,7 @@ export interface Task {
   label_set_id: string | null;
   reviewer_id: string | null;
   reviewer_name: string | null;
+  dataset_name: string | null;
   assigned_at: string;
   started_at: string | null;
   submitted_at: string | null;
