@@ -778,8 +778,10 @@ export default function RelationWorkspace() {
       await annotationApi.submitTask(taskId);
       showToast('success', 'Đã chuyển task cho reviewer');
       navigate(-1);
-    } catch {
-      showToast('error', 'Nộp task thất bại');
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      const detail = e.response?.data?.detail || 'Nộp thất bại';
+      showToast('error', typeof detail === 'string' ? detail : JSON.stringify(detail));
     } finally {
       setSubmitLoading(false);
     }
