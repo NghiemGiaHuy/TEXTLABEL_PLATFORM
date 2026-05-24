@@ -971,20 +971,16 @@ export default function RelationWorkspace() {
                         NER label
                       </button>
                     )}
-                    <button
-                      onClick={() => {
-                        if (workspaceStep === 'entities') {
-                          void handleEntityStepSave();
-                        } else {
-                          void handleSave();
-                        }
-                      }}
-                      disabled={saving}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-200 text-surface-600 hover:bg-surface-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                    >
-                      {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                      {workspaceStep === 'entities' ? 'Lưu NER label' : 'Lưu quan hệ'}
-                    </button>
+                    {workspaceStep === 'entities' && (
+                      <button
+                        onClick={() => void handleEntityStepSave()}
+                        disabled={saving}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-200 text-surface-600 hover:bg-surface-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      >
+                        {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                        Lưu NER label
+                      </button>
+                    )}
                   </div>
                 </div>
 
