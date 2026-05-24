@@ -4,7 +4,7 @@ Pydantic schemas for Review / QA (UC-5.1).
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -70,6 +70,8 @@ class ReviewSampleDetailResponse(BaseModel):
     content: str
     metadata: Optional[dict] = None
     annotations: List[dict] = []
+    related_entities: List[dict] = []
+    draft: Optional[Dict[str, Any]] = None
     annotator_name: Optional[str] = None
     guideline_version: Optional[int] = None
     review_history: List[ReviewResponse] = []

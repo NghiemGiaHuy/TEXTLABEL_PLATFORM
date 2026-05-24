@@ -6,6 +6,8 @@ import {
   useMemo,
   useRef,
   useState,
+  type MutableRefObject,
+  type RefObject,
 } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
@@ -23,10 +25,11 @@ import {
   MessageSquare,
   User,
   RefreshCw,
+  ExternalLink,
   Send,
 } from 'lucide-react';
 import { annotationApi } from '../api/annotationApi';
-import { reviewApi, type ReviewSampleDetail, type ReviewRecord } from '../api/reviewApi';
+import { reviewApi, type ReviewAnnotation, type ReviewSampleDetail, type ReviewRecord } from '../api/reviewApi';
 import { useToast } from '../components/Toast';
 import type { TaskDetail } from '../types';
 
@@ -65,6 +68,195 @@ function SampleStatusBadge({ status }: { status: string }) {
 
 function normalizeTaskStatus(task: TaskDetail): TaskDetail {
   return { ...task, status: task.task_status ?? task.status };
+}
+
+type ReviewWorkspaceKind = 'classification' | 'sequence' | 'relation';
+
+interface ReviewEntity {
+  id: string;
+  text: string;
+  start: number;
+  end: number;
+  label: string;
+  color: string;
+}
+
+interface ReviewRelationLink {
+  id: string;
+  headId?: string;
+  tailId?: string;
+  headText: string;
+  tailText: string;
+  relationType: string;
+  relLabelId?: string;
+  color: string;
+}
+
+interface RelationReviewData {
+  entities: ReviewEntity[];
+  relations: ReviewRelationLink[];
+  entityAnnotations: ReviewAnnotation[];
+  relationAnnotations: ReviewAnnotation[];
+}
+
+const EMPTY_RELATION_REVIEW_DATA: RelationReviewData = {
+  entities: [],
+  relations: [],
+  entityAnnotations: [],
+  relationAnnotations: [],
+};
+
+function getReviewWorkspaceKind(annotationType: string | null | undefined): ReviewWorkspaceKind {
+  if (annotationType === 'text_classification') return 'classification';
+  if (annotationType === 'relation_extraction') return 'relation';
+  return 'sequence';
+}
+
+function normalizeGroupName(name: string | null | undefined) {
+  return (name ?? '').trim().toLowerCase();
+}
+
+function isEntityGroupName(name: string | null | undefined) {
+  const groupName = normalizeGroupName(name);
+  return groupName.includes('ner') || groupName.includes('entity') || groupName.includes('thực thể');
+}
+
+function isRelationGroupName(name: string | null | undefined) {
+  const groupName = normalizeGroupName(name);
+  return groupName.includes('relation') || groupName.includes('quan hệ');
+}
+
+function buildReviewEntity(annotation: ReviewAnnotation): ReviewEntity {
+  return {
+    id: annotation.id,
+    text: annotation.selected_text,
+    start: annotation.start_offset,
+    end: annotation.end_offset,
+    label: annotation.label_name || 'Label',
+    color: annotation.label_color || '#6366F1',
+  };
+}
+
+function readDraftRelations(draftData: Record<string, unknown> | undefined): ReviewRelationLink[] {
+  const rawRelations = draftData?.relations;
+  if (!Array.isArray(rawRelations)) return [];
+
+  return rawRelations.flatMap((item, index): ReviewRelationLink[] => {
+    if (!item || typeof item !== 'object') return [];
+    const rel = item as Record<string, unknown>;
+    const headId = typeof rel.headId === 'string' ? rel.headId : undefined;
+    const tailId = typeof rel.tailId === 'string' ? rel.tailId : undefined;
+    if (!headId || !tailId) return [];
+
+    return [{
+      id: typeof rel.id === 'string' ? rel.id : `draft-rel-${index}`,
+      headId,
+      tailId,
+      headText: '',
+      tailText: '',
+      relationType: typeof rel.relationType === 'string' ? rel.relationType : 'Quan hệ',
+      relLabelId: typeof rel.relLabelId === 'string' ? rel.relLabelId : undefined,
+      color: typeof rel.color === 'string' ? rel.color : '#10B981',
+    }];
+  });
+}
+
+function parseRelationText(selectedText: string) {
+  const [head, ...tailParts] = selectedText.split(' -> ');
+  if (tailParts.length === 0) {
+    return { headText: selectedText, tailText: '' };
+  }
+  return { headText: head.trim(), tailText: tailParts.join(' -> ').trim() };
+}
+
+function mergeReviewAnnotations(primary: ReviewAnnotation[], secondary: ReviewAnnotation[]) {
+  const seen = new Set<string>();
+  const merged: ReviewAnnotation[] = [];
+
+  for (const annotation of [...primary, ...secondary]) {
+    const key = `${annotation.start_offset}:${annotation.end_offset}:${annotation.label_id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(annotation);
+  }
+
+  return merged.sort((a, b) => a.start_offset - b.start_offset || a.end_offset - b.end_offset);
+}
+
+function buildRelationReviewData(sampleDetail: ReviewSampleDetail | null): RelationReviewData {
+  if (!sampleDetail) return EMPTY_RELATION_REVIEW_DATA;
+
+  const annotations = sampleDetail.annotations ?? [];
+  const draftRelations = readDraftRelations(sampleDetail.draft?.draft_data);
+  const draftEndpointIds = new Set<string>();
+  const draftRelationLabelIds = new Set<string>();
+
+  draftRelations.forEach((relation) => {
+    if (relation.headId) draftEndpointIds.add(relation.headId);
+    if (relation.tailId) draftEndpointIds.add(relation.tailId);
+    if (relation.relLabelId) draftRelationLabelIds.add(relation.relLabelId);
+  });
+
+  const relationAnnotations = annotations.filter((annotation) =>
+    draftRelationLabelIds.has(annotation.label_id)
+    || isRelationGroupName(annotation.label_group_name)
+    || annotation.selected_text.includes(' -> ')
+  );
+  const relationAnnotationIds = new Set(relationAnnotations.map((annotation) => annotation.id));
+
+  const currentEntityAnnotations = annotations.filter((annotation) => {
+    if (relationAnnotationIds.has(annotation.id)) return false;
+    if (draftEndpointIds.has(annotation.id)) return true;
+    if (isEntityGroupName(annotation.label_group_name)) return true;
+    return draftEndpointIds.size === 0 && !isRelationGroupName(annotation.label_group_name);
+  });
+
+  const entityAnnotations = mergeReviewAnnotations(
+    currentEntityAnnotations,
+    sampleDetail.related_entities ?? []
+  );
+  const entityById = new Map(entityAnnotations.map((annotation) => [annotation.id, buildReviewEntity(annotation)]));
+  const entities = [...entityById.values()].sort((a, b) => a.start - b.start || a.end - b.end);
+  const labelById = new Map(annotations.map((annotation) => [annotation.label_id, annotation]));
+
+  const relationsFromDraft = draftRelations.flatMap((relation): ReviewRelationLink[] => {
+    const head = relation.headId ? entityById.get(relation.headId) : undefined;
+    const tail = relation.tailId ? entityById.get(relation.tailId) : undefined;
+    const labelAnnotation = relation.relLabelId ? labelById.get(relation.relLabelId) : undefined;
+    if (!head && !tail) return [];
+
+    return [{
+      ...relation,
+      headText: head?.text || relation.headText,
+      tailText: tail?.text || relation.tailText,
+      relationType: labelAnnotation?.label_name || relation.relationType,
+      color: labelAnnotation?.label_color || relation.color,
+    }];
+  });
+
+  const draftRelationKeys = new Set(
+    relationsFromDraft.map((relation) => `${relation.relLabelId || ''}:${relation.headText}->${relation.tailText}`)
+  );
+  const fallbackRelations = relationAnnotations.flatMap((annotation): ReviewRelationLink[] => {
+    const { headText, tailText } = parseRelationText(annotation.selected_text);
+    const key = `${annotation.label_id}:${headText}->${tailText}`;
+    if (draftRelationKeys.has(key)) return [];
+    return [{
+      id: annotation.id,
+      headText,
+      tailText,
+      relationType: annotation.label_name || 'Quan hệ',
+      relLabelId: annotation.label_id,
+      color: annotation.label_color || '#10B981',
+    }];
+  });
+
+  return {
+    entities,
+    relations: [...relationsFromDraft, ...fallbackRelations],
+    entityAnnotations,
+    relationAnnotations,
+  };
 }
 
 type ReviewSampleStatusFilter = 'all' | 'pending' | 'submitted' | 'approved' | 'rejected' | 'fixed';
@@ -431,6 +623,12 @@ export default function ReviewWorkspace() {
     }
   }, [taskId, task, currentSampleIndex, loadSample, reloadTask, showToast]);
 
+  const annotationType = task?.annotation_type ?? task?.task_type ?? 'sequence_labeling';
+  const reviewKind = getReviewWorkspaceKind(annotationType);
+  const relationReviewData = useMemo(() => buildRelationReviewData(sampleDetail), [sampleDetail]);
+  const isClassification = reviewKind === 'classification';
+  const isRelationExtraction = reviewKind === 'relation';
+
   // ─── Loading / Error ────────────────────────────────────
   if (loading) {
     return (
@@ -456,7 +654,6 @@ export default function ReviewWorkspace() {
   const samples = task?.task_samples || [];
   const currentSample = samples[currentSampleIndex];
   const currentSampleStatus = currentSample?.status || 'submitted';
-  const isClassification = task?.annotation_type === 'text_classification';
   const isReviewSubmitted = task?.status === 'submitted';
   const isReviewFinalized = task?.status === 'approved' || task?.status === 'rework';
   const sampleReviewDecision = currentSampleStatus === 'approved'
@@ -493,15 +690,24 @@ export default function ReviewWorkspace() {
           </Link>
           <div className="w-px h-4 bg-surface-200" />
           <div className="flex items-center gap-2 min-w-0">
-            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${isClassification ? 'bg-amber-100' : 'bg-purple-100'}`}>
-              {isClassification
-                ? <BadgeCheck className="w-4 h-4 text-amber-600" />
-                : <Tag className="w-4 h-4 text-purple-600" />
-              }
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${isClassification ? 'bg-amber-100' : isRelationExtraction ? 'bg-emerald-100' : 'bg-purple-100'}`}>
+              {isClassification ? (
+                <BadgeCheck className="w-4 h-4 text-amber-600" />
+              ) : isRelationExtraction ? (
+                <ExternalLink className="w-4 h-4 text-emerald-600" />
+              ) : (
+                <Tag className="w-4 h-4 text-purple-600" />
+              )}
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-surface-900 leading-none">
-                {isClassification ? 'Text Classification Review' : 'Sequence Labeling Review'}
+                {isClassification
+                  ? 'Text Classification Review'
+                  : isRelationExtraction
+                    ? 'Relation Extraction Review'
+                    : annotationType === 'ner'
+                      ? 'NER Review'
+                      : 'Sequence Labeling Review'}
               </p>
               <p className="text-[11px] text-surface-400 mt-0.5">
                 #{taskId?.slice(0, 8)}
@@ -578,7 +784,15 @@ export default function ReviewWorkspace() {
                     <span>·</span>
                     <span>{reviewWordCount(sampleDetail.content).toLocaleString()} từ</span>
                     <span>·</span>
-                    <span>{sampleDetail.annotations.length} nhãn</span>
+                    {isRelationExtraction ? (
+                      <>
+                        <span>{relationReviewData.entities.length} entities</span>
+                        <span>·</span>
+                        <span>{relationReviewData.relations.length} quan hệ</span>
+                      </>
+                    ) : (
+                      <span>{sampleDetail.annotations.length} nhãn</span>
+                    )}
                   </div>
                 </div>
 
@@ -586,6 +800,11 @@ export default function ReviewWorkspace() {
                   <ClassificationReviewTextPanel
                     content={sampleDetail.content}
                     annotations={sampleDetail.annotations}
+                  />
+                ) : isRelationExtraction ? (
+                  <RelationReviewTextPanel
+                    content={sampleDetail.content}
+                    relationData={relationReviewData}
                   />
                 ) : (
                   <div className="bg-white rounded-2xl border border-surface-200 shadow-subtle">
@@ -626,6 +845,8 @@ export default function ReviewWorkspace() {
             <ReviewPanel
               sampleDetail={sampleDetail}
               isClassification={isClassification}
+              isRelationExtraction={isRelationExtraction}
+              relationData={relationReviewData}
               isAlreadyReviewed={isAlreadyReviewed}
               sampleReviewDecision={sampleReviewDecision}
               isReviewFinalized={isReviewFinalized}
@@ -788,11 +1009,281 @@ function ClassificationReviewTextPanel({
 }
 
 // ============================================================
+// RELATION REVIEW PANEL — read-only relation extraction view
+// ============================================================
+function RelationReviewTextPanel({
+  content,
+  relationData,
+}: {
+  content: string;
+  relationData: RelationReviewData;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const entityRefs = useRef<Record<string, HTMLElement | null>>({});
+  const drawableRelations = relationData.relations.filter((relation) => relation.headId && relation.tailId);
+
+  return (
+    <div className="space-y-4">
+      <div className="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
+        <Clock className="w-4 h-4 text-amber-500 shrink-0" />
+        <p className="text-xs text-amber-700 font-medium">
+          Chế độ duyệt — chỉ xem. Kiểm tra entity, hướng quan hệ và nhãn quan hệ trước khi duyệt.
+        </p>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-surface-200 shadow-subtle p-5 relative" ref={containerRef}>
+        {drawableRelations.length > 0 && (
+          <RelationReviewArrows
+            relations={drawableRelations}
+            entityRefs={entityRefs}
+            containerRef={containerRef}
+          />
+        )}
+        <RelationReviewAnnotatedText
+          content={content}
+          entities={relationData.entities}
+          entityRefs={entityRefs}
+        />
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="rounded-xl border border-surface-200 bg-white p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <Hash className="w-3.5 h-3.5 text-surface-400" />
+            <p className="text-[11px] font-semibold text-surface-500 uppercase tracking-wide">Entities</p>
+            <span className="ml-auto text-[10px] font-bold text-surface-400 bg-surface-100 px-2 py-0.5 rounded-full">
+              {relationData.entities.length}
+            </span>
+          </div>
+          {relationData.entities.length === 0 ? (
+            <p className="text-xs text-surface-400 py-2">Không có entity để duyệt.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {relationData.entities.map((entity) => (
+                <span
+                  key={entity.id}
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold"
+                  style={{
+                    backgroundColor: `rgba(${hexToRgb(entity.color)}, 0.12)`,
+                    color: entity.color,
+                  }}
+                >
+                  <span className="truncate">{entity.text}</span>
+                  <span className="text-[9px] opacity-60 shrink-0">{entity.label}</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-surface-200 bg-white p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <ExternalLink className="w-3.5 h-3.5 text-surface-400" />
+            <p className="text-[11px] font-semibold text-surface-500 uppercase tracking-wide">Quan hệ</p>
+            <span className="ml-auto text-[10px] font-bold text-surface-400 bg-surface-100 px-2 py-0.5 rounded-full">
+              {relationData.relations.length}
+            </span>
+          </div>
+          {relationData.relations.length === 0 ? (
+            <p className="text-xs text-surface-400 py-2">Chưa có quan hệ nào.</p>
+          ) : (
+            <div className="space-y-2">
+              {relationData.relations.map((relation) => (
+                <div key={relation.id} className="rounded-lg border border-surface-200 bg-surface-50 p-2.5">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="min-w-0 truncate rounded-md bg-white px-2 py-0.5 text-[11px] font-semibold text-surface-700 border border-surface-200">
+                      {relation.headText || '?'}
+                    </span>
+                    <ChevronRight className="w-3 h-3 text-surface-400 shrink-0" />
+                    <span className="min-w-0 truncate rounded-md bg-white px-2 py-0.5 text-[11px] font-semibold text-surface-700 border border-surface-200">
+                      {relation.tailText || '?'}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2 min-w-0">
+                    <div className="h-px flex-1 min-w-4" style={{ backgroundColor: relation.color }} />
+                    <span
+                      className="max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-bold text-white"
+                      style={{ backgroundColor: relation.color }}
+                    >
+                      {relation.relationType}
+                    </span>
+                    <div className="h-px flex-1 min-w-4" style={{ backgroundColor: relation.color }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RelationReviewAnnotatedText({
+  content,
+  entities,
+  entityRefs,
+}: {
+  content: string;
+  entities: ReviewEntity[];
+  entityRefs: MutableRefObject<Record<string, HTMLElement | null>>;
+}) {
+  const segments = useMemo(() => {
+    const sorted = [...entities].sort((a, b) => a.start - b.start || a.end - b.end);
+    const parts: Array<{ text: string; entity?: ReviewEntity }> = [];
+    let cursor = 0;
+
+    for (const entity of sorted) {
+      if (entity.start < cursor || entity.start >= entity.end) continue;
+      if (entity.start > cursor) parts.push({ text: content.slice(cursor, entity.start) });
+      parts.push({ text: content.slice(entity.start, entity.end), entity });
+      cursor = entity.end;
+    }
+    if (cursor < content.length) parts.push({ text: content.slice(cursor) });
+    return parts.length > 0 ? parts : [{ text: content }];
+  }, [content, entities]);
+
+  return (
+    <p className="text-[15px] leading-9 text-surface-800 select-text">
+      {segments.map((segment, index) => {
+        if (!segment.entity) return <span key={index}>{segment.text}</span>;
+        const entity = segment.entity;
+        return (
+          <mark
+            key={index}
+            ref={(el) => { entityRefs.current[entity.id] = el; }}
+            className="rounded px-1 not-italic font-semibold"
+            style={{
+              backgroundColor: `rgba(${hexToRgb(entity.color)}, 0.18)`,
+              color: entity.color,
+              outline: `1px solid rgba(${hexToRgb(entity.color)}, 0.32)`,
+              outlineOffset: '1px',
+            }}
+            title={entity.label}
+          >
+            {segment.text}
+            <sup className="ml-0.5 text-[9px] font-normal opacity-60">{entity.label}</sup>
+          </mark>
+        );
+      })}
+    </p>
+  );
+}
+
+function RelationReviewArrows({
+  relations,
+  entityRefs,
+  containerRef,
+}: {
+  relations: ReviewRelationLink[];
+  entityRefs: MutableRefObject<Record<string, HTMLElement | null>>;
+  containerRef: RefObject<HTMLDivElement | null>;
+}) {
+  const [paths, setPaths] = useState<Array<{ d: string; color: string; label: string; lx: number; ly: number }>>([]);
+  const [svgTop, setSvgTop] = useState(0);
+  const [svgHeight, setSvgHeight] = useState(0);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const updatePaths = () => {
+      const cRect = container.getBoundingClientRect();
+      const nextPaths: Array<{ d: string; color: string; label: string; lx: number; ly: number }> = [];
+      let minY = Infinity;
+      let maxY = -Infinity;
+
+      relations.forEach((relation) => {
+        if (!relation.headId || !relation.tailId) return;
+        const headEl = entityRefs.current[relation.headId];
+        const tailEl = entityRefs.current[relation.tailId];
+        if (!headEl || !tailEl) return;
+
+        const headRect = headEl.getBoundingClientRect();
+        const tailRect = tailEl.getBoundingClientRect();
+        const x1 = headRect.left + headRect.width / 2 - cRect.left;
+        const y1 = headRect.top - cRect.top;
+        const x2 = tailRect.left + tailRect.width / 2 - cRect.left;
+        const y2 = tailRect.top - cRect.top;
+        const arcHeight = Math.max(22, Math.min(96, Math.abs(x2 - x1) * 0.25));
+        const midY = Math.min(y1, y2) - arcHeight;
+        const d = `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
+
+        minY = Math.min(minY, midY, y1, y2);
+        maxY = Math.max(maxY, y1, y2);
+        nextPaths.push({
+          d,
+          color: relation.color,
+          label: relation.relationType,
+          lx: (x1 + x2) / 2,
+          ly: midY,
+        });
+      });
+
+      if (nextPaths.length === 0 || minY === Infinity) {
+        setPaths([]);
+        return;
+      }
+
+      setSvgTop(minY - 6);
+      setSvgHeight(maxY - minY + 12);
+      setPaths(nextPaths);
+    };
+
+    const frame = window.requestAnimationFrame(updatePaths);
+    window.addEventListener('resize', updatePaths);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', updatePaths);
+    };
+  }, [relations, entityRefs, containerRef]);
+
+  if (paths.length === 0) return null;
+
+  return (
+    <svg
+      className="absolute left-0 pointer-events-none z-10"
+      style={{ top: svgTop, height: svgHeight, width: '100%' }}
+    >
+      <defs>
+        {paths.map((path, index) => (
+          <marker key={index} id={`review-arr-${index}`} markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+            <path d="M0,0 L0,7 L7,3.5 z" fill={path.color} />
+          </marker>
+        ))}
+      </defs>
+      {paths.map((path, index) => {
+        const labelWidth = Math.max(42, path.label.length * 7);
+        return (
+          <g key={index}>
+            <path d={path.d} fill="none" stroke={path.color} strokeWidth="1.5" markerEnd={`url(#review-arr-${index})`} />
+            <rect
+              x={path.lx - labelWidth / 2}
+              y={path.ly - svgTop - 10}
+              width={labelWidth}
+              height={16}
+              rx="4"
+              fill={path.color}
+              opacity={0.92}
+            />
+            <text x={path.lx} y={path.ly - svgTop + 1} textAnchor="middle" fill="white" fontSize="8" fontWeight="700">
+              {path.label}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// ============================================================
 // REVIEW PANEL — Actions + history
 // ============================================================
 function ReviewPanel({
   sampleDetail,
   isClassification,
+  isRelationExtraction,
+  relationData,
   isAlreadyReviewed,
   sampleReviewDecision,
   isReviewFinalized,
@@ -815,6 +1306,8 @@ function ReviewPanel({
 }: {
   sampleDetail: ReviewSampleDetail;
   isClassification: boolean;
+  isRelationExtraction: boolean;
+  relationData: RelationReviewData;
   isAlreadyReviewed: boolean;
   sampleReviewDecision: 'approved' | 'rejected' | null;
   isReviewFinalized: boolean;
@@ -867,15 +1360,70 @@ function ReviewPanel({
         <div className="flex items-center gap-2 mb-3">
           {isClassification ? (
             <BadgeCheck className="w-4 h-4 text-gray-400" />
+          ) : isRelationExtraction ? (
+            <ExternalLink className="w-4 h-4 text-gray-400" />
           ) : (
             <Hash className="w-4 h-4 text-gray-400" />
           )}
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-            {isClassification ? 'Nhãn phân loại' : 'Nhãn đã đánh'}
+            {isClassification ? 'Nhãn phân loại' : isRelationExtraction ? 'Thực thể & quan hệ' : 'Nhãn đã đánh'}
           </span>
-          <span className="ml-auto text-xs text-gray-400">{sampleDetail.annotations.length}</span>
+          <span className="ml-auto text-xs text-gray-400">
+            {isRelationExtraction
+              ? `${relationData.entities.length}/${relationData.relations.length}`
+              : sampleDetail.annotations.length}
+          </span>
         </div>
-        {sampleDetail.annotations.length === 0 ? (
+        {isRelationExtraction ? (
+          <div className="space-y-3 max-h-72 overflow-y-auto">
+            <div>
+              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Entities</p>
+              {relationData.entities.length === 0 ? (
+                <p className="text-xs text-gray-400 py-2">Không có entity</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {relationData.entities.map((entity) => (
+                    <div
+                      key={entity.id}
+                      className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-gray-50"
+                      style={{ borderLeft: `3px solid ${entity.color}` }}
+                    >
+                      <span className="w-3 h-3 rounded shrink-0" style={{ backgroundColor: entity.color }} />
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold truncate" style={{ color: entity.color }}>{entity.label}</p>
+                        <p className="text-[12px] text-gray-700 truncate">"{entity.text}"</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Quan hệ</p>
+              {relationData.relations.length === 0 ? (
+                <p className="text-xs text-gray-400 py-2">Chưa có quan hệ</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {relationData.relations.map((relation) => (
+                    <div
+                      key={relation.id}
+                      className="rounded-lg bg-gray-50 px-2.5 py-2"
+                      style={{ borderLeft: `3px solid ${relation.color}` }}
+                    >
+                      <p className="text-xs font-semibold truncate" style={{ color: relation.color }}>
+                        {relation.relationType}
+                      </p>
+                      <p className="text-[12px] text-gray-700 truncate">
+                        {relation.headText || '?'} → {relation.tailText || '?'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : sampleDetail.annotations.length === 0 ? (
           <p className="text-xs text-gray-400 text-center py-3">Chưa có nhãn nào</p>
         ) : isClassification ? (
           <div className="space-y-1.5 max-h-56 overflow-y-auto">

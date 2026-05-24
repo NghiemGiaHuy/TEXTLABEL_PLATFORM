@@ -7,6 +7,8 @@ export interface ReviewAnnotation {
   label_id: string;
   label_name?: string;
   label_color?: string;
+  label_group_id?: string | null;
+  label_group_name?: string | null;
   start_offset: number;
   end_offset: number;
   selected_text: string;
@@ -30,12 +32,21 @@ export interface ReviewSubmitResult {
   approved_count: number;
 }
 
+export interface ReviewAnnotationDraft {
+  id: string;
+  task_sample_id: string;
+  draft_data: Record<string, unknown>;
+  auto_saved_at: string;
+}
+
 export interface ReviewSampleDetail {
   task_sample_id: string;
   task_id: string;
   content: string;
   metadata?: Record<string, unknown>;
   annotations: ReviewAnnotation[];
+  related_entities?: ReviewAnnotation[];
+  draft?: ReviewAnnotationDraft | null;
   annotator_name?: string;
   guideline_version?: number;
   review_history: ReviewRecord[];

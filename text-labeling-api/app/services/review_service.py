@@ -18,12 +18,19 @@ from app.core.exceptions import (
     ForbiddenException,
     NotFoundException,
 )
-from app.models.annotation import Annotation
+from app.models.annotation import Annotation, AnnotationDraft
 from app.models.audit_log import AuditLog
+from app.models.label import Label
 from app.models.notification import NotificationType
 from app.models.project import Guideline, Project, ProjectMember, ProjectRole
 from app.models.review import Review, ReviewResult
-from app.models.task import Task, TaskSample, TaskSampleStatus, TaskStatus
+from app.models.task import (
+    AnnotationType,
+    Task,
+    TaskSample,
+    TaskSampleStatus,
+    TaskStatus,
+)
 from app.models.user import RoleName, User
 from app.services.notification_service import create_notification
 
@@ -201,11 +208,16 @@ class ReviewService:
         # Load annotations
         ann_result = await self.db.execute(
             select(Annotation)
-            .options(selectinload(Annotation.label))
+            .options(selectinload(Annotation.label).selectinload(Label.group))
             .where(Annotation.task_sample_id == ts.id)
             .order_by(Annotation.start_offset)
         )
         annotations = ann_result.scalars().all()
+
+        draft_result = await self.db.execute(
+            select(AnnotationDraft).where(AnnotationDraft.task_sample_id == ts.id)
+        )
+        draft = draft_result.scalar_one_or_none()
 
         # Load review history
         rev_result = await self.db.execute(
@@ -231,23 +243,57 @@ class ReviewService:
             )
         )
 
+        related_entities = []
+        if task_obj.annotation_type == AnnotationType.RELATION_EXTRACTION:
+            entity_result = await self.db.execute(
+                select(Annotation)
+                .join(TaskSample, Annotation.task_sample_id == TaskSample.id)
+                .join(Task, TaskSample.task_id == Task.id)
+                .options(selectinload(Annotation.label).selectinload(Label.group))
+                .where(
+                    and_(
+                        Task.project_id == task_obj.project_id,
+                        TaskSample.data_sample_id == ts.data_sample_id,
+                        or_(
+                            Task.annotation_type.in_(
+                                [
+                                    AnnotationType.NER,
+                                    AnnotationType.SEQUENCE_LABELING,
+                                ]
+                            ),
+                            Task.annotation_type.is_(None),
+                        ),
+                        Annotation.start_offset < Annotation.end_offset,
+                    )
+                )
+                .order_by(Annotation.start_offset, Annotation.end_offset)
+            )
+
+            seen_entities: set[tuple[int, int, UUID]] = set()
+            for entity in entity_result.scalars().unique().all():
+                key = (entity.start_offset, entity.end_offset, entity.label_id)
+                if key in seen_entities:
+                    continue
+                seen_entities.add(key)
+                related_entities.append(self._build_review_annotation(entity))
+
         return {
             "task_sample_id": ts.id,
             "task_id": task_id,
             "content": ts.data_sample.content,
             "metadata": ts.data_sample.metadata_,
-            "annotations": [
+            "annotations": [self._build_review_annotation(a) for a in annotations],
+            "related_entities": related_entities,
+            "draft": (
                 {
-                    "id": a.id,
-                    "label_id": a.label_id,
-                    "label_name": a.label.name if a.label else None,
-                    "label_color": a.label.color if a.label else None,
-                    "start_offset": a.start_offset,
-                    "end_offset": a.end_offset,
-                    "selected_text": a.selected_text,
+                    "id": draft.id,
+                    "task_sample_id": draft.task_sample_id,
+                    "draft_data": draft.draft_data,
+                    "auto_saved_at": draft.auto_saved_at,
                 }
-                for a in annotations
-            ],
+                if draft
+                else None
+            ),
             "annotator_name": (
                 task_obj.assignee.full_name if task_obj.assignee else None
             ),
@@ -602,4 +648,23 @@ class ReviewService:
             "result": r.result.value,
             "feedback": r.feedback,
             "reviewed_at": r.reviewed_at,
+        }
+
+    def _build_review_annotation(self, annotation: Annotation) -> dict:
+        return {
+            "id": annotation.id,
+            "label_id": annotation.label_id,
+            "label_name": annotation.label.name if annotation.label else None,
+            "label_color": annotation.label.color if annotation.label else None,
+            "label_group_id": (
+                annotation.label.label_group_id if annotation.label else None
+            ),
+            "label_group_name": (
+                annotation.label.group.name
+                if annotation.label and annotation.label.group
+                else None
+            ),
+            "start_offset": annotation.start_offset,
+            "end_offset": annotation.end_offset,
+            "selected_text": annotation.selected_text,
         }
