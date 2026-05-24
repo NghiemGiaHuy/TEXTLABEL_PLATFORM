@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useOutletContext } from 'react-router-dom';
 import {
   ArrowLeft,
   ChevronLeft,
@@ -284,6 +284,7 @@ export default function Workspace() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
+  const { sidebarOpen } = useOutletContext<{ sidebarOpen: boolean }>();
 
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [sampleData, setSampleData] = useState<AnnotationSampleResponse | null>(null);
@@ -732,7 +733,7 @@ export default function Workspace() {
           </div>
 
           {/* RIGHT: Label selector */}
-          <div className="w-full xl:w-64 xl:shrink-0 bg-white border-t xl:border-t-0 xl:border-l border-surface-200 flex flex-col">
+          <div className={`w-full xl:shrink-0 bg-white border-t xl:border-t-0 xl:border-l border-surface-200 flex flex-col transition-[width] duration-200 ${sidebarOpen ? 'xl:w-64' : 'xl:w-80'}`}>
             <div className="px-4 py-3 border-b border-surface-100">
               <div className="flex items-center justify-between">
                 <div>
@@ -953,7 +954,7 @@ export default function Workspace() {
         </div>
 
         {/* RIGHT: Entity labels + entity list */}
-        <div className="w-full xl:w-72 xl:shrink-0 bg-white border-t xl:border-t-0 xl:border-l border-surface-200 flex flex-col">
+        <div className={`w-full xl:shrink-0 bg-white border-t xl:border-t-0 xl:border-l border-surface-200 flex flex-col transition-[width] duration-200 ${sidebarOpen ? 'xl:w-72' : 'xl:w-[360px]'}`}>
           {/* Label buttons */}
           <div className="px-4 pt-4 pb-3 border-b border-surface-100">
             <div className="flex items-center justify-between mb-3">
