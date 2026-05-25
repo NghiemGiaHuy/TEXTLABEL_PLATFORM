@@ -96,16 +96,10 @@ export default function MainLayout() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 py-4 px-3 overflow-y-auto space-y-5">
+        <nav className="flex-1 py-5 px-3 overflow-y-auto space-y-2">
           {navSections.map(({ section, items }) => {
             return (
               <div key={section}>
-                <p
-                  className="text-[10px] font-bold uppercase tracking-widest px-3 mb-1.5"
-                  style={{ color: 'rgba(255,255,255,0.35)' }}
-                >
-                  {section}
-                </p>
                 <div className="space-y-0.5">
                   {items.map(({ to, label, icon: Icon, end }) => (
                     <NavLink
@@ -113,7 +107,7 @@ export default function MainLayout() {
                       to={to}
                       end={end}
                       className={({ isActive }) =>
-                        `group flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+                        `group flex items-center gap-3 px-3.5 py-3 rounded-lg text-base font-semibold transition-all duration-150 ${
                           isActive
                             ? 'bg-blue-600 text-white'
                             : 'text-blue-100/70 hover:bg-white/8 hover:text-white'
@@ -123,12 +117,12 @@ export default function MainLayout() {
                       {({ isActive }) => (
                         <>
                           <Icon
-                            className={`w-[18px] h-[18px] shrink-0 ${
+                            className={`w-5 h-5 shrink-0 ${
                               isActive ? 'text-white' : 'text-blue-300/70 group-hover:text-blue-200'
                             }`}
                           />
                           <span className="flex-1">{label}</span>
-                          {isActive && <ChevronRight className="w-3.5 h-3.5 text-blue-300 shrink-0" />}
+                          {isActive && <ChevronRight className="w-4 h-4 text-blue-300 shrink-0" />}
                         </>
                       )}
                     </NavLink>
