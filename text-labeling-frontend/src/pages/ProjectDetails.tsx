@@ -38,7 +38,7 @@ import {
   BadgeCheck,
   ExternalLink,
 } from 'lucide-react';
-import { projectApi, type ExportRecord, type ExportDownloadData } from '../api/projectApi';
+import { projectApi, type ExportDownloadData } from '../api/projectApi';
 import { taskApi } from '../api/taskApi';
 import { userApi } from '../api/userApi';
 import { labelApi, type LabelSetData } from '../api/labelApi';
@@ -5473,25 +5473,10 @@ function ExportModal({
   tasks: Task[];
 }) {
   const [creating, setCreating] = useState(false);
-  const [downloading, setDownloading] = useState<string | null>(null);
   const [format, setFormat] = useState<'json' | 'jsonl' | 'csv'>('json');
   const [filterMode, setFilterMode] = useState<'approved_only' | 'all' | 'by_dataset'>('approved_only');
   const [selectedDatasetId, setSelectedDatasetId] = useState('');
   const [error, setError] = useState('');
-  const [exports, setExports] = useState<ExportRecord[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-
-  const fetchHistory = async () => {
-    setLoadingHistory(true);
-    try {
-      const res = await projectApi.listExports(projectId);
-      setExports(res.exports ?? []);
-    } catch {
-      // non-critical
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
 
   useEffect(() => {
     if (isOpen) {
@@ -5499,9 +5484,7 @@ function ExportModal({
       setFilterMode('approved_only');
       setSelectedDatasetId('');
       setError('');
-      void fetchHistory();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   const approvedSampleCount = tasks
@@ -5528,28 +5511,14 @@ function ExportModal({
         payload.dataset_id = selectedDatasetId;
       }
       const exportRecord = await projectApi.createExport(projectId, payload);
-      // Download immediately
       const downloadData = await projectApi.downloadExport(projectId, exportRecord.id);
       triggerBrowserDownload(downloadData);
-      await fetchHistory();
       onExported();
     } catch (err: unknown) {
       const e = err as { response?: { data?: { detail?: string } } };
       setError(e.response?.data?.detail || 'Export thất bại');
     } finally {
       setCreating(false);
-    }
-  };
-
-  const handleRedownload = async (exportId: string) => {
-    setDownloading(exportId);
-    try {
-      const downloadData = await projectApi.downloadExport(projectId, exportId);
-      triggerBrowserDownload(downloadData);
-    } catch {
-      // silent
-    } finally {
-      setDownloading(null);
     }
   };
 
@@ -5658,56 +5627,6 @@ function ExportModal({
           )}
         </button>
 
-        {/* Export history */}
-        <div className="border-t border-surface-100 pt-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Clock className="w-3.5 h-3.5 text-surface-400" />
-            <span className="text-xs font-semibold text-surface-500 uppercase tracking-wide">Lịch sử export</span>
-            {loadingHistory && <Loader2 className="w-3 h-3 animate-spin text-surface-400 ml-1" />}
-          </div>
-          {!loadingHistory && exports.length === 0 ? (
-            <p className="text-xs text-surface-400 italic py-2">Chưa có lần export nào.</p>
-          ) : (
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-              {exports.map((exp) => (
-                <div
-                  key={exp.id}
-                  className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-surface-50 border border-surface-100"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-surface-200 text-surface-600">
-                        {exp.format}
-                      </span>
-                      <span className="text-xs text-surface-500 truncate">
-                        {exp.filter_status === 'approved_only' ? 'Approved' : 'All'} · {exp.total_records} records
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-surface-400 mt-0.5">
-                      {new Date(exp.created_at).toLocaleString('vi-VN', {
-                        day: '2-digit', month: '2-digit', year: 'numeric',
-                        hour: '2-digit', minute: '2-digit',
-                      })}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => handleRedownload(exp.id)}
-                    disabled={downloading === exp.id}
-                    className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-brand-600 bg-brand-50 hover:bg-brand-100 transition-colors disabled:opacity-50"
-                    title="Tải lại"
-                  >
-                    {downloading === exp.id ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Download className="w-3 h-3" />
-                    )}
-                    Tải lại
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
     </Modal>
   );
