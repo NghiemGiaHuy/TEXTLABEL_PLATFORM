@@ -19,7 +19,7 @@ from app.core.exceptions import (
 )
 from app.models.audit_log import AuditLog
 from app.models.dataset import DataSample, Dataset, DatasetStatus, SourceFormat
-from app.models.project import Project, ProjectMember, ProjectRole
+from app.models.project import Project, ProjectRole
 from app.models.task import TaskSample, TaskSampleStatus
 from app.models.user import RoleName, User
 

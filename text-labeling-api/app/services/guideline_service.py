@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import ForbiddenException, NotFoundException
 from app.models.audit_log import AuditLog
-from app.models.project import Guideline, Project, ProjectMember, ProjectRole
+from app.models.project import Guideline, Project, ProjectRole
 from app.models.user import RoleName, User
 
 

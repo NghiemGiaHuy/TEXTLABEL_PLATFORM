@@ -37,7 +37,6 @@ from app.schemas.annotation import (
     SaveDraftRequest,
     UpdateAnnotationRequest,
 )
-from app.schemas.auth import MessageResponse
 from app.services.annotation_service import AnnotationService
 
 router = APIRouter(prefix="/annotations", tags=["Annotations"])

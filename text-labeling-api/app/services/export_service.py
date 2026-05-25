@@ -4,7 +4,6 @@ Business logic for exporting labeled data (UC-6.1).
 """
 
 import csv
-import io
 import json
 import os
 from datetime import datetime, timezone
@@ -22,10 +21,9 @@ from app.core.exceptions import (
 )
 from app.models.annotation import Annotation
 from app.models.audit_log import AuditLog
-from app.models.dataset import DataSample, Dataset
 from app.models.export import Export, ExportFilterStatus, ExportFormat
 from app.models.notification import NotificationType
-from app.models.project import Project, ProjectMember, ProjectRole
+from app.models.project import Project, ProjectRole
 from app.models.review import Review
 from app.models.task import Task, TaskSample, TaskSampleStatus
 from app.models.user import RoleName, User

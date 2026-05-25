@@ -76,6 +76,8 @@ const DASHBOARD_ERROR_MESSAGE =
 const STATS_ERROR_MESSAGE =
   'Kh\u00f4ng t\u1ea3i \u0111\u01b0\u1ee3c th\u1ed1ng k\u00ea. Vui l\u00f2ng th\u1eed l\u1ea1i sau.';
 
+const CHART_SKELETON_HEIGHTS = [42, 68, 56, 82, 48, 74, 60];
+
 // ─── Fill missing dates in range ─────────────────────────────
 function fillDailyRange(
   data: { date: string; count: number }[],
@@ -492,9 +494,9 @@ function AnnotationChart({
   if (loading) {
     return (
       <div className="flex items-end gap-1" style={{ height: 110 }}>
-        {Array.from({ length: 7 }).map((_, i) => (
+        {CHART_SKELETON_HEIGHTS.map((height, i) => (
           <div key={i} className="flex-1 rounded-t-sm animate-pulse bg-surface-100"
-            style={{ height: `${30 + Math.random() * 70}%` }} />
+            style={{ height: `${height}%` }} />
         ))}
       </div>
     );
@@ -521,7 +523,7 @@ function AnnotationChart({
   return (
     <div>
       <div className="flex items-end gap-1" style={{ height: 110 }}>
-        {data.map((d, i) => {
+        {data.map((d) => {
           const barH = Math.max((d.count / max) * 100, d.count > 0 ? 2 : 0);
           return (
             <div key={d.date} className="flex-1 relative group" style={{ height: 110 }}>

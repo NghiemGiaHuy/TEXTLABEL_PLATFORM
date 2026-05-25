@@ -31,7 +31,7 @@ import { userApi } from '../api/userApi';
 import type { AdminUser, Role, UserRoleCounts } from '../types';
 import Modal from '../components/Modal';
 import { useConfirm } from '../components/ConfirmDialog';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/toastContext';
 import { useAuthStore } from '../store/authStore';
 
 const ROLE_LABELS: Record<string, string> = {

@@ -384,7 +384,7 @@ class UserService:
             select(RefreshToken).where(
                 and_(
                     RefreshToken.user_id == user_id,
-                    RefreshToken.is_revoked == False,
+                    RefreshToken.is_revoked.is_(False),
                 )
             )
         )
@@ -457,7 +457,7 @@ class UserService:
             select(RefreshToken).where(
                 and_(
                     RefreshToken.user_id == user_id,
-                    RefreshToken.is_revoked == False,
+                    RefreshToken.is_revoked.is_(False),
                 )
             )
         )
@@ -499,7 +499,7 @@ class UserService:
             select(RefreshToken).where(
                 and_(
                     RefreshToken.user_id == user_id,
-                    RefreshToken.is_revoked == False,
+                    RefreshToken.is_revoked.is_(False),
                 )
             )
         )

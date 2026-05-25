@@ -9,7 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import and_, case, cast, func, or_, select
+from sqlalchemy import cast, func, or_, select
 from sqlalchemy import Date as SADate
 from sqlalchemy.ext.asyncio import AsyncSession
 

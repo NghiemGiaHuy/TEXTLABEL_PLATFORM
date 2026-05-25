@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.middleware.auth_dependencies import get_current_user, require_roles
+from app.middleware.auth_dependencies import require_roles
 from app.models.user import RoleName, User
 from app.schemas.review import (
     ApproveRequest,

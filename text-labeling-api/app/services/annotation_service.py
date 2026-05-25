@@ -18,7 +18,6 @@ from app.core.exceptions import (
     NotFoundException,
 )
 from app.models.annotation import Annotation, AnnotationDraft
-from app.models.dataset import DataSample
 from app.models.label import Label, LabelSet
 from app.models.notification import NotificationType
 from app.models.project import Guideline, Project, ProjectMember, ProjectRole
@@ -789,15 +788,15 @@ class AnnotationService:
         )
         return [
             {
-                "id": l.id,
-                "name": l.name,
-                "color": l.color,
-                "shortcut_key": l.shortcut_key,
-                "is_required": l.is_required,
-                "label_group_id": l.label_group_id,
-                "label_group_name": l.group.name if l.group else None,
+                "id": label.id,
+                "name": label.name,
+                "color": label.color,
+                "shortcut_key": label.shortcut_key,
+                "is_required": label.is_required,
+                "label_group_id": label.label_group_id,
+                "label_group_name": label.group.name if label.group else None,
             }
-            for l in result.scalars().all()
+            for label in result.scalars().all()
         ]
 
     async def _get_required_label_ids(self, project_id: UUID) -> set:
@@ -807,7 +806,7 @@ class AnnotationService:
             .where(
                 and_(
                     LabelSet.project_id == project_id,
-                    Label.is_required == True,
+                    Label.is_required.is_(True),
                 )
             )
         )

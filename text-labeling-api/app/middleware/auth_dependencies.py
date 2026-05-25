@@ -13,7 +13,6 @@ Usage in endpoints:
     current_user: User = Depends(require_roles(RoleName.ADMIN, RoleName.PROJECT_OWNER))
 """
 
-from typing import List
 from uuid import UUID
 
 from fastapi import Depends, Request
@@ -25,7 +24,7 @@ from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.core.exceptions import ForbiddenException, UnauthorizedException
 from app.core.security import decode_token
-from app.models.user import RoleName, User, UserRole, UserStatus
+from app.models.user import RoleName, User, UserRole
 
 # --- Bearer Token Extractor ---
 bearer_scheme = HTTPBearer(auto_error=False)

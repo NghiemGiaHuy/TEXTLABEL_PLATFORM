@@ -40,9 +40,8 @@ import {
 } from 'lucide-react';
 import { projectApi } from '../api/projectApi';
 import { taskApi } from '../api/taskApi';
-import { userApi } from '../api/userApi';
 import { labelApi, type LabelSetData } from '../api/labelApi';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/toastContext';
 import type {
   Project,
   Dataset,
@@ -129,7 +128,6 @@ function isProjectDetailTab(value: string | null): value is TabKey {
 export default function ProjectDetails() {
   const { id: projectId } = useParams<{ id: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { showToast } = useToast();
   const { user } = useAuthStore();
   const tabParam = searchParams.get('tab');
   const activeTab: TabKey = isProjectDetailTab(tabParam) ? tabParam : 'overview';
@@ -176,7 +174,7 @@ export default function ProjectDetails() {
       if (mem.status === 'fulfilled') setMembers(mem.value.members);
       if (ls.status === 'fulfilled') setLabelSets(ls.value.label_sets);
       setError('');
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (!silent && !hasProjectSnapshotRef.current) {
         setError(extractErrorMessage(err, 'Failed to load project'));
       }
@@ -254,7 +252,6 @@ export default function ProjectDetails() {
     );
   }
 
-  const totalLabels = labelSets.reduce((sum, ls) => sum + ls.labels.length, 0);
   const totalSamples = project.total_samples ?? datasets.reduce((sum, ds) => sum + ds.total_samples, 0);
 
   const submittedTaskCount = tasks.filter((t) => getTaskLifecycleStatus(t) === 'submitted').length;
@@ -561,8 +558,8 @@ function OverviewTab({
       await taskApi.updateMember(projectId, m.user_id, pendingRole);
       onRefresh();
       setEditingId(null);
-    } catch (err: any) {
-      showToast('error', err.response?.data?.detail || 'Không thể đổi vai trò');
+    } catch (err: unknown) {
+      showToast('error', extractErrorMessage(err, 'Không thể đổi vai trò'));
     } finally {
       setSavingId(null);
     }
@@ -1017,8 +1014,8 @@ function DatasetsTab({
     try {
       await taskApi.deleteDataset(projectId, ds.id);
       onRefresh();
-    } catch (err: any) {
-      showToast('error', err.response?.data?.detail || 'Failed to delete');
+    } catch (err: unknown) {
+      showToast('error', extractErrorMessage(err, 'Failed to delete'));
     } finally {
       setDeleting(null);
     }
@@ -1644,7 +1641,11 @@ function AssignModal({
   const toggleReviewer = (id: string) =>
     setSelectedReviewerIds((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
 
@@ -1724,7 +1725,7 @@ function AssignModal({
       showToast('success', 'Phân công task thành công!');
       onAssigned();
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(extractErrorMessage(err, 'Phân công thất bại'));
     } finally {
       setSubmitting(false);
@@ -2826,7 +2827,11 @@ function AssignTab({
               return new Set([id]);
             }
             const next = new Set(prev);
-            next.has(id) ? next.delete(id) : next.add(id);
+            if (next.has(id)) {
+              next.delete(id);
+            } else {
+              next.add(id);
+            }
             return next;
           });
         };
@@ -2838,7 +2843,11 @@ function AssignTab({
               return new Set([id]);
             }
             const next = new Set(prev);
-            next.has(id) ? next.delete(id) : next.add(id);
+            if (next.has(id)) {
+              next.delete(id);
+            } else {
+              next.add(id);
+            }
             return next;
           });
         };
@@ -3148,6 +3157,7 @@ function AssignTab({
 // ─────────────────────────────────────────────────────────────
 // MEMBERS TAB
 // ─────────────────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function MembersTab({
   members,
   projectId,
@@ -3179,8 +3189,8 @@ function MembersTab({
       await taskApi.updateMember(projectId, m.user_id, pendingRole);
       onRefresh();
       setEditingId(null);
-    } catch (err: any) {
-      showToast('error', err.response?.data?.detail || 'Không thể đổi vai trò');
+    } catch (err: unknown) {
+      showToast('error', extractErrorMessage(err, 'Không thể đổi vai trò'));
     } finally {
       setSavingId(null);
     }
@@ -3596,6 +3606,7 @@ function ImportDataModal({
 // ─────────────────────────────────────────────────────────────
 // ASSIGN TASKS MODAL
 // ─────────────────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function AssignTasksModal({
   isOpen,
   onClose,
@@ -3655,7 +3666,7 @@ function AssignTasksModal({
             : undefined,
       });
       onAssigned();
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(extractErrorMessage(err, 'Assignment failed'));
     } finally {
       setSubmitting(false);
@@ -3901,7 +3912,7 @@ function AddMemberModal({
     try {
       await taskApi.addMember(projectId, selectedUser, role);
       onAdded();
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(extractErrorMessage(err, 'Không thể thêm thành viên'));
     } finally {
       setSubmitting(false);
@@ -5248,7 +5259,7 @@ function AddLabelModal({
         is_required: isRequired,
       });
       onAdded();
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(extractErrorMessage(err, 'Failed to add label'));
     } finally {
       setSubmitting(false);

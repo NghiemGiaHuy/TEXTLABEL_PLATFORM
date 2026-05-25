@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { annotationApi } from '../api/annotationApi';
 import { buildApiUrl } from '../api/apiConfig';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/toastContext';
 import { useConfirm } from '../components/ConfirmDialog';
 import type {
   Annotation,

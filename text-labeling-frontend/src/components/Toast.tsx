@@ -1,25 +1,14 @@
 // src/components/Toast.tsx
 
-import { useCallback, useEffect, useState, createContext, useContext, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { CheckCircle2, XCircle, AlertTriangle, Info, X } from 'lucide-react';
-
-type ToastType = 'success' | 'error' | 'warning' | 'info';
+import { ToastContext, type ToastType } from './toastContext';
 
 interface Toast {
   id: number;
   type: ToastType;
   message: string;
 }
-
-interface ToastContextValue {
-  showToast: (type: ToastType, message: string) => void;
-}
-
-const ToastContext = createContext<ToastContextValue>({
-  showToast: () => {},
-});
-
-export const useToast = () => useContext(ToastContext);
 
 let nextId = 0;
 

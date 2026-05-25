@@ -5,7 +5,6 @@ Supports manual and round-robin assignment methods.
 """
 
 import math
-from datetime import datetime, timezone
 from typing import Awaitable, Callable, List, Optional
 from uuid import UUID
 
@@ -15,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
     BadRequestException,
-    ConflictException,
     ForbiddenException,
     NotFoundException,
 )

@@ -17,7 +17,6 @@ from app.schemas.dataset import (
     CreateDatasetRequest,
     DatasetDetailResponse,
     DatasetListResponse,
-    DatasetResponse,
     ImportResultResponse,
     SampleListResponse,
 )

@@ -32,7 +32,7 @@ import {
 import { useAuthStore } from '../store/authStore';
 import { authApi } from '../api/authApi';
 import { notificationApi } from '../api/notificationApi';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/toastContext';
 import { applyUiTheme, normalizeUiTheme, type UiTheme } from '../utils/theme';
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -128,6 +128,28 @@ function ToggleSwitch({
 }
 
 // ─── Tab: Profile ───────────────────────────────────────────────
+
+function NotifRow({
+  label,
+  desc,
+  checked,
+  onChange,
+}: {
+  label: string;
+  desc: string;
+  checked: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between py-3 border-b border-surface-50 last:border-0">
+      <div className="flex-1 min-w-0 pr-4">
+        <p className="text-sm font-medium text-surface-800">{label}</p>
+        <p className="text-xs text-surface-400 mt-0.5">{desc}</p>
+      </div>
+      <ToggleSwitch checked={checked} onChange={onChange} />
+    </div>
+  );
+}
 
 function ProfileTab() {
   const user = useAuthStore((s) => s.user);
@@ -608,24 +630,6 @@ function NotificationsTab() {
     }
   };
 
-  const NotifRow = ({
-    label,
-    desc,
-    field,
-  }: {
-    label: string;
-    desc: string;
-    field: keyof NotificationPrefs;
-  }) => (
-    <div className="flex items-center justify-between py-3 border-b border-surface-50 last:border-0">
-      <div className="flex-1 min-w-0 pr-4">
-        <p className="text-sm font-medium text-surface-800">{label}</p>
-        <p className="text-xs text-surface-400 mt-0.5">{desc}</p>
-      </div>
-      <ToggleSwitch checked={prefs[field]} onChange={() => toggle(field)} />
-    </div>
-  );
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -647,10 +651,10 @@ function NotificationsTab() {
           </p>
         </div>
         <div>
-          <NotifRow label="Được phân công task" desc="Khi admin giao task mới cho bạn" field="task_assigned" />
-          <NotifRow label="Task bị từ chối" desc="Khi reviewer từ chối bài làm của bạn và yêu cầu sửa lại" field="task_rejected" />
-          <NotifRow label="Gần đến hạn dự án" desc="Nhắc nhở 2 ngày trước deadline dự án" field="project_deadline" />
-          <NotifRow label="Review hoàn tất" desc="Khi task của bạn được duyệt xong" field="review_complete" />
+          <NotifRow label="Được phân công task" desc="Khi admin giao task mới cho bạn" checked={prefs.task_assigned} onChange={() => toggle('task_assigned')} />
+          <NotifRow label="Task bị từ chối" desc="Khi reviewer từ chối bài làm của bạn và yêu cầu sửa lại" checked={prefs.task_rejected} onChange={() => toggle('task_rejected')} />
+          <NotifRow label="Gần đến hạn dự án" desc="Nhắc nhở 2 ngày trước deadline dự án" checked={prefs.project_deadline} onChange={() => toggle('project_deadline')} />
+          <NotifRow label="Review hoàn tất" desc="Khi task của bạn được duyệt xong" checked={prefs.review_complete} onChange={() => toggle('review_complete')} />
         </div>
       </div>
 
@@ -664,8 +668,8 @@ function NotificationsTab() {
             <p className="text-sm font-semibold text-surface-800">Dành cho Reviewer</p>
           </div>
           <div>
-            <NotifRow label="Task được nộp để review" desc="Khi annotator submit task và chờ bạn kiểm duyệt" field="task_submitted" />
-            <NotifRow label="Cột mốc annotation" desc="Thông báo khi đạt 50%, 80%, 100% mẫu trong dự án" field="annotation_milestone" />
+            <NotifRow label="Task được nộp để review" desc="Khi annotator submit task và chờ bạn kiểm duyệt" checked={prefs.task_submitted} onChange={() => toggle('task_submitted')} />
+            <NotifRow label="Cột mốc annotation" desc="Thông báo khi đạt 50%, 80%, 100% mẫu trong dự án" checked={prefs.annotation_milestone} onChange={() => toggle('annotation_milestone')} />
           </div>
         </div>
       )}
@@ -680,7 +684,7 @@ function NotificationsTab() {
             <p className="text-sm font-semibold text-surface-800">Dành cho Project Owner</p>
           </div>
           <div>
-            <NotifRow label="Export hoàn tất" desc="Khi file xuất dữ liệu đã sẵn sàng để tải về" field="export_ready" />
+            <NotifRow label="Export hoàn tất" desc="Khi file xuất dữ liệu đã sẵn sàng để tải về" checked={prefs.export_ready} onChange={() => toggle('export_ready')} />
           </div>
         </div>
       )}

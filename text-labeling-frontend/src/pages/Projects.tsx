@@ -11,10 +11,8 @@ import {
   RefreshCw,
   ChevronDown,
   Users,
-  Calendar,
   Trash2,
   ExternalLink,
-  Eye,
   MoreHorizontal,
   Pencil,
   X,
@@ -26,12 +24,11 @@ import {
 } from 'lucide-react';
 import { projectApi, type ExportRecord } from '../api/projectApi';
 import { taskApi } from '../api/taskApi';
-import { userApi } from '../api/userApi';
 import { useAuthStore } from '../store/authStore';
-import type { Project, ProjectMember, Dataset, Task, AdminUser } from '../types';
+import type { Project, ProjectMember, Dataset, AdminUser } from '../types';
 import Modal from '../components/Modal';
 import { useConfirm } from '../components/ConfirmDialog';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/toastContext';
 import { downloadExportFile } from '../utils/exportDownload';
 
 // ─── Config ─────────────────────────────────────────────────
@@ -103,7 +100,6 @@ export default function Projects() {
   const [statusFilter, setStatusFilter]   = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [showCreate, setShowCreate] = useState(false);
-  const [deleting, setDeleting]   = useState<string | null>(null);
   const [detailProject, setDetailProject] = useState<Project | null>(null);
   const { confirm, ConfirmDialog } = useConfirm();
   const { showToast } = useToast();
@@ -180,14 +176,11 @@ export default function Projects() {
 
   const handleDelete = async (projectId: string) => {
     if (!await confirm('Bạn có chắc muốn xóa dự án này?', { title: 'Xóa dự án', variant: 'danger', confirmText: 'Xóa' })) return;
-    setDeleting(projectId);
     try {
       await projectApi.deleteProject(projectId);
       fetchProjects();
     } catch {
       showToast('error', 'Không xóa được dự án');
-    } finally {
-      setDeleting(null);
     }
   };
 
@@ -477,11 +470,8 @@ function ProjectDetailModal({
   onRefresh: () => void;
 }) {
   const navigate = useNavigate();
-  const { confirm, ConfirmDialog } = useConfirm();
-  const { showToast } = useToast();
   const [members,  setMembers]  = useState<ProjectMember[]>([]);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [tasks,    setTasks]    = useState<Task[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [showEdit,          setShowEdit]          = useState(false);
   const [showMembers,       setShowMembers]       = useState(false);
@@ -491,15 +481,13 @@ function ProjectDetailModal({
     let cancelled = false;
     const load = async () => {
       setLoading(true);
-      const [mRes, dRes, tRes] = await Promise.allSettled([
+      const [mRes, dRes] = await Promise.allSettled([
         taskApi.getMembers(project.id),
         taskApi.getDatasets(project.id),
-        taskApi.getTasks(project.id, { page_size: 1000 }),
       ]);
       if (!cancelled) {
         if (mRes.status === 'fulfilled') setMembers(mRes.value.members);
         if (dRes.status === 'fulfilled') setDatasets(dRes.value.datasets);
-        if (tRes.status === 'fulfilled') setTasks(tRes.value.tasks);
         setLoading(false);
       }
     };
@@ -532,7 +520,6 @@ function ProjectDetailModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {ConfirmDialog}
       <div className="absolute inset-0 bg-surface-950/50 backdrop-blur-[3px]" onClick={onClose} />
       <div className="relative w-full max-w-2xl rounded-2xl flex flex-col max-h-[90vh]" style={{ background: '#f8fafc', boxShadow: '0 24px 64px rgba(0,0,0,0.18), 0 8px 24px rgba(0,0,0,0.10)' }}>
 
@@ -1126,7 +1113,7 @@ function ExportHistoryModal({
       .then((r) => setExportList(r.exports))
       .catch(() => showToast('error', 'Không tải được lịch sử export'))
       .finally(() => setLoading(false));
-  }, [project.id]);
+  }, [project.id, showToast]);
 
   const handleDownload = async (exp: ExportRecord) => {
     setDownloading(exp.id);

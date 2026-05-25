@@ -16,7 +16,6 @@ from app.core.config import settings
 from app.core.exceptions import (
     AccountLockedException,
     BadRequestException,
-    ConflictException,
     NotFoundException,
     UnauthorizedException,
 )
@@ -31,8 +30,6 @@ from app.core.security import (
 from app.models.user import (
     PasswordReset,
     RefreshToken,
-    Role,
-    RoleName,
     User,
     UserRole,
     UserStatus,
@@ -155,7 +152,7 @@ class AuthService:
                 and_(
                     RefreshToken.token_hash == token_hash,
                     RefreshToken.user_id == user_id,
-                    RefreshToken.is_revoked == False,
+                    RefreshToken.is_revoked.is_(False),
                 )
             )
         )
@@ -188,7 +185,7 @@ class AuthService:
             select(RefreshToken).where(
                 and_(
                     RefreshToken.token_hash == token_hash,
-                    RefreshToken.is_revoked == False,
+                    RefreshToken.is_revoked.is_(False),
                 )
             )
         )
@@ -251,7 +248,7 @@ class AuthService:
             select(PasswordReset).where(
                 and_(
                     PasswordReset.user_id == user.id,
-                    PasswordReset.is_used == False,
+                    PasswordReset.is_used.is_(False),
                 )
             )
         )
@@ -294,7 +291,7 @@ class AuthService:
             select(PasswordReset).where(
                 and_(
                     PasswordReset.token_hash == token_hash,
-                    PasswordReset.is_used == False,
+                    PasswordReset.is_used.is_(False),
                 )
             )
         )
@@ -320,7 +317,7 @@ class AuthService:
             select(RefreshToken).where(
                 and_(
                     RefreshToken.user_id == user.id,
-                    RefreshToken.is_revoked == False,
+                    RefreshToken.is_revoked.is_(False),
                 )
             )
         )
@@ -381,7 +378,7 @@ class AuthService:
             select(RefreshToken).where(
                 and_(
                     RefreshToken.user_id == user.id,
-                    RefreshToken.is_revoked == False,
+                    RefreshToken.is_revoked.is_(False),
                 )
             )
         )

@@ -11,14 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import (
-    BadRequestException,
     ConflictException,
     ForbiddenException,
     NotFoundException,
 )
 from app.models.audit_log import AuditLog
 from app.models.label import Label, LabelGroup, LabelSet
-from app.models.project import Project, ProjectMember, ProjectRole
+from app.models.project import Project, ProjectRole
 from app.models.user import RoleName, User
 
 
@@ -410,7 +409,7 @@ class LabelService:
             "created_at": ls.created_at,
             "updated_at": ls.updated_at,
             "groups": [self._build_group_response(g) for g in ls.groups],
-            "labels": [self._build_label_response(l) for l in ls.labels],
+            "labels": [self._build_label_response(label) for label in ls.labels],
         }
 
     def _build_group_response(self, g: LabelGroup) -> dict:
@@ -421,15 +420,15 @@ class LabelService:
             "sort_order": g.sort_order,
         }
 
-    def _build_label_response(self, l: Label) -> dict:
+    def _build_label_response(self, label: Label) -> dict:
         return {
-            "id": l.id,
-            "label_set_id": l.label_set_id,
-            "label_group_id": l.label_group_id,
-            "name": l.name,
-            "color": l.color,
-            "shortcut_key": l.shortcut_key,
-            "sort_order": l.sort_order,
-            "is_required": l.is_required,
-            "created_at": l.created_at,
+            "id": label.id,
+            "label_set_id": label.label_set_id,
+            "label_group_id": label.label_group_id,
+            "name": label.name,
+            "color": label.color,
+            "shortcut_key": label.shortcut_key,
+            "sort_order": label.sort_order,
+            "is_required": label.is_required,
+            "created_at": label.created_at,
         }

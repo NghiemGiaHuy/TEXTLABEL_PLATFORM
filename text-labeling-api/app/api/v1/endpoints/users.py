@@ -28,7 +28,6 @@ from app.schemas.user import (
     AdminResetPasswordRequest,
     CreateUserRequest,
     RoleListResponse,
-    RoleResponse,
     UpdateUserRequest,
     UserDetailResponse,
     UserListResponse,
@@ -67,7 +66,7 @@ async def search_users(
     db: AsyncSession = Depends(get_db),
 ):
     """List active users — accessible to any authenticated user (for member selection)."""
-    from sqlalchemy import select, or_
+    from sqlalchemy import or_
     from sqlalchemy.future import select as fselect
     query = fselect(User).where(User.status == UserStatus.ACTIVE)
     if search:
