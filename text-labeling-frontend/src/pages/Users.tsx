@@ -900,7 +900,7 @@ function EditUserModal({
 
     const timer = window.setTimeout(() => {
       setFullName(user.full_name);
-      setSelectedRoles(user.roles.map((role) => role.id));
+      setSelectedRoles(user.roles[0] ? [user.roles[0].id] : []);
       setRoles(user.roles);
       setError('');
       userApi.getRoles().then((res) => setRoles(res.roles)).catch(() => {});
@@ -910,18 +910,14 @@ function EditUserModal({
   }, [isOpen, user]);
 
   const toggleRole = (roleId: string) => {
-    setSelectedRoles((prev) =>
-      prev.includes(roleId)
-        ? prev.filter((id) => id !== roleId)
-        : [...prev, roleId]
-    );
+    setSelectedRoles((prev) => (prev[0] === roleId ? [] : [roleId]));
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!user) return;
     if (!fullName.trim() || selectedRoles.length === 0) {
-      setError('Vui lòng nhập họ tên và chọn ít nhất một vai trò.');
+      setError('Vui lòng nhập họ tên và chọn một vai trò.');
       return;
     }
 
@@ -973,6 +969,7 @@ function EditUserModal({
             roles={roles}
             selectedRoles={selectedRoles}
             onToggle={toggleRole}
+            selectionMode="single"
           />
         </div>
 
@@ -1015,7 +1012,6 @@ function ResetPasswordModal({
   onSaved: () => void;
 }) {
   const { showToast } = useToast();
-  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -1023,7 +1019,6 @@ function ResetPasswordModal({
   useEffect(() => {
     if (!isOpen) return;
 
-    setCurrentPassword('');
     setNewPassword('');
     setError('');
     setSubmitting(false);
@@ -1070,17 +1065,6 @@ function ResetPasswordModal({
             value={user ? `${user.full_name} · ${user.email}` : ''}
             disabled
             className="input-field bg-surface-50 text-surface-500"
-          />
-        </FieldLabel>
-
-        <FieldLabel label="Mật khẩu hiện tại">
-          <input
-            type="password"
-            autoComplete="current-password"
-            placeholder="Nhập mật khẩu hiện tại nếu cần"
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-            className="input-field"
           />
         </FieldLabel>
 

@@ -259,6 +259,9 @@ export default function ProjectDetails() {
   const submittedTaskCount = tasks.filter((t) => getTaskLifecycleStatus(t) === 'submitted').length;
   const pendingReviewCount = Math.max(project.pending_review_samples ?? 0, submittedTaskCount);
   const approvedTaskCount = tasks.filter(isApprovedTask).length;
+  const exportApprovedSampleCount =
+    project.approved_samples ??
+    tasks.filter(isApprovedTask).reduce((sum, task) => sum + task.sample_count, 0);
 
   // ─── Role-aware badge computation ───────────────────────
   const myProjectRole = user
@@ -452,7 +455,7 @@ export default function ProjectDetails() {
         onExported={() => { setShowExport(false); fetchAll(); }}
         projectId={projectId!}
         datasets={datasets}
-        tasks={tasks}
+        approvedSampleCount={exportApprovedSampleCount}
       />
       {showAssign && (
         <AssignModal
@@ -5463,14 +5466,14 @@ function ExportModal({
   onExported,
   projectId,
   datasets,
-  tasks,
+  approvedSampleCount,
 }: {
   isOpen: boolean;
   onClose: () => void;
   onExported: () => void;
   projectId: string;
   datasets: Dataset[];
-  tasks: Task[];
+  approvedSampleCount: number;
 }) {
   const [creating, setCreating] = useState(false);
   const [format, setFormat] = useState<'json' | 'jsonl' | 'csv'>('json');
@@ -5486,10 +5489,6 @@ function ExportModal({
       setError('');
     }
   }, [isOpen]);
-
-  const approvedSampleCount = tasks
-    .filter((t) => t.status === 'approved')
-    .reduce((sum, t) => sum + t.sample_count, 0);
 
   const selectedFormat = FORMAT_OPTIONS.find((f) => f.value === format)!;
 
