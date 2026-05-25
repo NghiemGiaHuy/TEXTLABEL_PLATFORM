@@ -91,6 +91,7 @@ async def get_export(
 @router.get(
     "/exports/{export_id}/download",
     response_model=ExportDownloadResponse,
+    response_model_exclude_none=True,
 )
 async def download_export(
     project_id: UUID,

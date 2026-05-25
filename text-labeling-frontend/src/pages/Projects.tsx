@@ -32,6 +32,7 @@ import type { Project, ProjectMember, Dataset, Task, AdminUser } from '../types'
 import Modal from '../components/Modal';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
+import { downloadExportFile } from '../utils/exportDownload';
 
 // ─── Config ─────────────────────────────────────────────────
 
@@ -1131,31 +1132,8 @@ function ExportHistoryModal({
     setDownloading(exp.id);
     try {
       const result = await projectApi.downloadExport(project.id, exp.id);
-      let blob: Blob;
-      let filename: string;
-      if (exp.format === 'json') {
-        blob = new Blob([JSON.stringify(result.data, null, 2)], { type: 'application/json' });
-        filename = `export_${project.id.slice(0, 8)}.json`;
-      } else if (exp.format === 'jsonl') {
-        const lines = result.data.map((d) => JSON.stringify(d)).join('\n');
-        blob = new Blob([lines], { type: 'application/jsonl' });
-        filename = `export_${project.id.slice(0, 8)}.jsonl`;
-      } else {
-        const header = 'sample_id,content,annotations,annotator,review_status\n';
-        const rows = result.data.map((d) =>
-          [d.sample_id, `"${d.content.replace(/"/g, '""')}"`, `"${JSON.stringify(d.annotations).replace(/"/g, '""')}"`, d.annotator || '', d.review_status || ''].join(',')
-        ).join('\n');
-        blob = new Blob([header + rows], { type: 'text/csv' });
-        filename = `export_${project.id.slice(0, 8)}.csv`;
-      }
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const filename = `export_${project.id.slice(0, 8)}.${exp.format}`;
+      downloadExportFile(result, `export_${project.id.slice(0, 8)}`);
       showToast('success', `Đã tải ${filename}`);
     } catch {
       showToast('error', 'Tải xuống thất bại');

@@ -38,7 +38,7 @@ import {
   BadgeCheck,
   ExternalLink,
 } from 'lucide-react';
-import { projectApi, type ExportDownloadData } from '../api/projectApi';
+import { projectApi } from '../api/projectApi';
 import { taskApi } from '../api/taskApi';
 import { userApi } from '../api/userApi';
 import { labelApi, type LabelSetData } from '../api/labelApi';
@@ -54,6 +54,7 @@ import type {
 } from '../types';
 import Modal from '../components/Modal';
 import { useConfirm } from '../components/ConfirmDialog';
+import { downloadExportFile } from '../utils/exportDownload';
 
 function extractErrorMessage(err: unknown, fallback = 'Có lỗi xảy ra'): string {
   const e = err as { response?: { data?: { detail?: unknown } } };
@@ -5421,45 +5422,6 @@ const FILTER_OPTIONS = [
 // ─────────────────────────────────────────────────────────────
 // EXPORT MODAL
 // ─────────────────────────────────────────────────────────────
-function triggerBrowserDownload(downloadData: ExportDownloadData) {
-  const { format } = downloadData.export_info;
-  const items = downloadData.data;
-  let content: string;
-  let mimeType: string;
-
-  if (format === 'jsonl') {
-    content = items.map((item) => JSON.stringify(item)).join('\n');
-    mimeType = 'application/x-ndjson';
-  } else if (format === 'csv') {
-    const headers = ['sample_id', 'content', 'annotations', 'annotator', 'review_status'];
-    const rows = items.map((item) => [
-      item.sample_id,
-      `"${(item.content ?? '').replace(/"/g, '""')}"`,
-      `"${JSON.stringify(item.annotations).replace(/"/g, '""')}"`,
-      item.annotator ?? '',
-      item.review_status ?? '',
-    ]);
-    content = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    mimeType = 'text/csv';
-  } else {
-    content = JSON.stringify(items, null, 2);
-    mimeType = 'application/json';
-  }
-
-  const date = new Date(downloadData.export_info.created_at)
-    .toISOString()
-    .slice(0, 10);
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `export_${date}.${format}`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
 function ExportModal({
   isOpen,
   onClose,
@@ -5504,14 +5466,17 @@ function ExportModal({
       const payload: Parameters<typeof projectApi.createExport>[1] = {
         format,
         filter_status: filterMode === 'by_dataset' ? 'approved_only' : filterMode,
-        include_metadata: true,
+        include_metadata: false,
       };
       if (filterMode === 'by_dataset' && selectedDatasetId) {
         payload.dataset_id = selectedDatasetId;
       }
       const exportRecord = await projectApi.createExport(projectId, payload);
       const downloadData = await projectApi.downloadExport(projectId, exportRecord.id);
-      triggerBrowserDownload(downloadData);
+      const date = new Date(downloadData.export_info.created_at)
+        .toISOString()
+        .slice(0, 10);
+      downloadExportFile(downloadData, `export_${date}`);
       onExported();
     } catch (err: unknown) {
       const e = err as { response?: { data?: { detail?: string } } };

@@ -31,8 +31,8 @@ export interface ExportDownloadData {
       end: number;
       text: string;
     }>;
-    annotator: string | null;
-    review_status: string | null;
+    annotator?: string | null;
+    review_status?: string | null;
     metadata?: Record<string, unknown>;
   }>;
 }

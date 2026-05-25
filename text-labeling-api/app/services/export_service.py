@@ -183,7 +183,7 @@ class ExportService:
 
         return {
             "export_info": self._build_export_response(export),
-            "data": data,
+            "data": self._format_export_data(data, export.format),
         }
 
     # ================================================================
@@ -289,6 +289,7 @@ class ExportService:
         """Generate export file and return file path."""
         export_dir = "/tmp/exports"
         os.makedirs(export_dir, exist_ok=True)
+        export_data = self._format_export_data(data, fmt)
 
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         base_name = f"export_{project_id}_{timestamp}"
@@ -296,12 +297,12 @@ class ExportService:
         if fmt == ExportFormat.JSON:
             path = os.path.join(export_dir, f"{base_name}.json")
             with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+                json.dump(export_data, f, ensure_ascii=False, indent=2, default=str)
 
         elif fmt == ExportFormat.JSONL:
             path = os.path.join(export_dir, f"{base_name}.jsonl")
             with open(path, "w", encoding="utf-8") as f:
-                for item in data:
+                for item in export_data:
                     f.write(json.dumps(item, ensure_ascii=False, default=str) + "\n")
 
         elif fmt == ExportFormat.CSV:
@@ -310,18 +311,28 @@ class ExportService:
                 writer = csv.writer(f)
                 writer.writerow([
                     "sample_id", "content", "annotations",
-                    "annotator", "review_status",
                 ])
-                for item in data:
+                for item in export_data:
                     writer.writerow([
                         item["sample_id"],
                         item["content"],
                         json.dumps(item["annotations"], ensure_ascii=False),
-                        item.get("annotator", ""),
-                        item.get("review_status", ""),
                     ])
 
         return path
+
+    def _format_export_data(
+        self, data: List[dict], fmt: ExportFormat
+    ) -> List[dict]:
+        formatted = []
+        for item in data:
+            export_item = dict(item)
+            export_item.pop("annotator", None)
+            export_item.pop("review_status", None)
+            if fmt in {ExportFormat.JSON, ExportFormat.JSONL}:
+                export_item.pop("metadata", None)
+            formatted.append(export_item)
+        return formatted
 
     # ================================================================
     # Duplicate-export check
