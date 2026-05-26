@@ -71,8 +71,11 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string; lab
   completed:   { bg: 'bg-emerald-50',  text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Hoàn thành' },
   draft:       { bg: 'bg-surface-100', text: 'text-surface-600', dot: 'bg-surface-400', label: 'Chưa làm' },
   archived:    { bg: 'bg-amber-50',    text: 'text-amber-700',   dot: 'bg-amber-500',   label: 'Lưu trữ' },
+  pending:     { bg: 'bg-surface-100', text: 'text-surface-600', dot: 'bg-surface-400', label: 'Chưa làm' },
   todo:        { bg: 'bg-surface-100', text: 'text-surface-600', dot: 'bg-surface-400', label: 'Chờ làm' },
+  annotated:   { bg: 'bg-blue-50',     text: 'text-blue-700',    dot: 'bg-blue-500',    label: 'Đang làm' },
   in_progress: { bg: 'bg-blue-50',     text: 'text-blue-700',    dot: 'bg-blue-500',    label: 'Đang làm' },
+  done:        { bg: 'bg-emerald-50',  text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Đã xong' },
   submitted:   { bg: 'bg-emerald-50',  text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Đã xong' },
   rework:      { bg: 'bg-orange-50',   text: 'text-orange-700',  dot: 'bg-orange-500',  label: 'Cần sửa lại' },
   approved:    { bg: 'bg-emerald-50',  text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Đã duyệt' },
@@ -2416,6 +2419,24 @@ function AssignTab({
   const getAssignmentStatus = (task: Task) =>
     normalizeStatus(task.assignment_status ?? task.status);
 
+  const isInProgressSampleStatus = (status?: string | null) =>
+    ['annotated', 'in_progress'].includes(normalizeStatus(status));
+
+  const getAssignmentTaskDisplayStatus = (
+    task: Pick<Task, 'sample_status_counts' | 'status' | 'task_status'>
+  ) => {
+    const counts = task.sample_status_counts ?? {};
+    const hasInProgressSample = Object.entries(counts).some(
+      ([status, count]) => isInProgressSampleStatus(status) && count > 0
+    );
+    return hasInProgressSample ? 'in_progress' : 'not_started';
+  };
+
+  const getAssignmentTaskDetailDisplayStatus = (task: TaskDetail) =>
+    task.task_samples?.some((sample) => isInProgressSampleStatus(sample.status))
+      ? 'in_progress'
+      : getAssignmentTaskDisplayStatus(task);
+
 
   const isNotStartedAssignment = (task: Task) =>
     ['not_started', 'todo', 'draft', 'pending'].includes(getAssignmentStatus(task));
@@ -2795,7 +2816,7 @@ function AssignTab({
                         <div className="flex flex-col gap-3">
                           {group.tasks.map((item) => (
                             <div key={item.id} className="flex min-h-[64px] items-center">
-                              <StatusBadge status={getTaskLifecycleStatus(item)} />
+                              <StatusBadge status={getAssignmentTaskDisplayStatus(item)} />
                             </div>
                           ))}
                         </div>
@@ -2872,7 +2893,7 @@ function AssignTab({
                       : <Tag className="w-3 h-3" />}
                     {getAnnotationLabel(detailTask)}
                   </span>
-                  <StatusBadge status={getTaskLifecycleStatus(detailTask)} />
+                  <StatusBadge status={getAssignmentTaskDetailDisplayStatus(detailTask)} />
                 </div>
               </div>
               <div className="text-right">
