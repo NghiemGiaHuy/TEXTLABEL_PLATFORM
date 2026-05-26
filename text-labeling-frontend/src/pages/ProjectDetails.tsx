@@ -1579,7 +1579,6 @@ function CompletedTasksTab({ tasks, projectId }: { tasks: Task[]; projectId: str
         allTasks={tasks}
         projectId={projectId}
         groupRows
-        showMethod
       />
     </div>
   );
@@ -1617,7 +1616,7 @@ function ReviewTaskTable({
       <thead>
         <tr className="border-b border-surface-100">
           <Th>Task ID</Th>
-          {!showMethod && <Th>Tên task</Th>}
+          {!showMethod && <Th>Task name</Th>}
           <Th>Annotator</Th>
           <Th>Samples</Th>
           {showMethod && <Th>Method</Th>}
