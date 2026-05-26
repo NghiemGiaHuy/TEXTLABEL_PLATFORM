@@ -4,7 +4,7 @@ Pydantic schemas for Task and TaskSample (UC-3.5).
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 from uuid import UUID
 
 from pydantic import AliasChoices, BaseModel, Field, field_validator
@@ -217,6 +217,8 @@ class TaskResponse(BaseModel):
     reviewer_id: Optional[UUID] = None
     reviewer_name: Optional[str] = None
     dataset_name: Optional[str] = None
+    work_status: Optional[str] = None
+    sample_status_counts: Dict[str, int] = Field(default_factory=dict)
     assigned_at: datetime
     started_at: Optional[datetime] = None
     submitted_at: Optional[datetime] = None

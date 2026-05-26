@@ -212,6 +212,8 @@ export interface Task {
   reviewer_id: string | null;
   reviewer_name: string | null;
   dataset_name: string | null;
+  work_status?: string | null;
+  sample_status_counts?: Record<string, number>;
   assigned_at: string;
   started_at: string | null;
   submitted_at: string | null;

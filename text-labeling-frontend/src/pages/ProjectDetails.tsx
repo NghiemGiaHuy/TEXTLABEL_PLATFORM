@@ -95,6 +95,22 @@ function getTaskLifecycleStatus(task: Pick<Task, 'status' | 'task_status'>): str
   return task.task_status ?? task.status;
 }
 
+function getAnnotateTaskWorkStatus(task: Pick<Task, 'status' | 'task_status' | 'work_status'>): string {
+  const lifecycleStatus = getTaskLifecycleStatus(task);
+  if (['submitted', 'approved', 'rejected', 'rework'].includes(lifecycleStatus)) {
+    return lifecycleStatus;
+  }
+  return task.work_status ?? lifecycleStatus;
+}
+
+function getReviewTaskWorkStatus(task: Pick<Task, 'status' | 'task_status' | 'work_status'>): string {
+  const lifecycleStatus = getTaskLifecycleStatus(task);
+  if (['approved', 'rejected', 'rework'].includes(lifecycleStatus)) {
+    return lifecycleStatus;
+  }
+  return task.work_status ?? lifecycleStatus;
+}
+
 function isApprovedTask(task: Pick<Task, 'status' | 'task_status'>): boolean {
   return getTaskLifecycleStatus(task) === 'approved';
 }
@@ -1407,7 +1423,7 @@ function TasksTab({
                     <div className="flex flex-col gap-3">
                       {group.tasks.map((item) => (
                         <div key={item.id} className="flex min-h-[56px] items-center">
-                          <StatusBadge status={getTaskLifecycleStatus(item)} />
+                          <StatusBadge status={getAnnotateTaskWorkStatus(item)} />
                         </div>
                       ))}
                     </div>
@@ -1680,7 +1696,7 @@ function ReviewTaskTable({
               <div className="flex flex-col gap-3">
                 {group.tasks.map((item) => (
                   <div key={item.id} className="flex min-h-[56px] items-center">
-                    <StatusBadge status={getTaskLifecycleStatus(item)} />
+                    <StatusBadge status={getReviewTaskWorkStatus(item)} />
                   </div>
                 ))}
               </div>

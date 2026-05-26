@@ -1106,6 +1106,52 @@ class TaskService:
                 status_map[task.id] = assignment_status
         return status_map
 
+    def _task_status_value(self, status) -> str:
+        return status.value if hasattr(status, "value") else str(status)
+
+    def _task_sample_status_counts(self, task: Task) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        try:
+            samples = task.task_samples
+        except Exception:
+            return counts
+
+        for sample in samples:
+            status = self._task_status_value(sample.status)
+            counts[status] = counts.get(status, 0) + 1
+        return counts
+
+    def _compute_task_work_status(
+        self,
+        task_status,
+        sample_status_counts: Optional[dict[str, int]] = None,
+    ) -> str:
+        status = self._task_status_value(task_status)
+        counts = sample_status_counts or {}
+
+        if status in {"approved", "rejected", "rework"}:
+            return status
+
+        if status == "submitted":
+            reviewed_count = sum(
+                counts.get(sample_status, 0)
+                for sample_status in ("approved", "rejected", "rework")
+            )
+            return "in_progress" if reviewed_count > 0 else "not_started"
+
+        worked_count = sum(
+            counts.get(sample_status, 0)
+            for sample_status in (
+                "annotated",
+                "done",
+                "submitted",
+                "approved",
+                "rejected",
+                "rework",
+            )
+        )
+        return "in_progress" if worked_count > 0 else "not_started"
+
     def _assignment_context_key(self, task: Task) -> tuple:
         return (
             task.project_id,
@@ -1774,6 +1820,15 @@ class TaskService:
         sample_count_map = {
             row[0]: row[1] for row in sample_count_result
         }
+        sample_status_result = await self.db.execute(
+            select(TaskSample.task_id, TaskSample.status, func.count(TaskSample.id))
+            .where(TaskSample.task_id.in_(task_ids))
+            .group_by(TaskSample.task_id, TaskSample.status)
+        )
+        sample_status_counts_map: dict[UUID, dict[str, int]] = {}
+        for task_id, sample_status, count in sample_status_result:
+            counts = sample_status_counts_map.setdefault(task_id, {})
+            counts[self._task_status_value(sample_status)] = count
 
         return {
             "tasks_updated": len(ordered_tasks),
@@ -1788,6 +1843,7 @@ class TaskService:
                     ),
                     sample_count=sample_count_map.get(task.id, 0),
                     assignment_status_override=assignment_status,
+                    sample_status_counts=sample_status_counts_map.get(task.id),
                 )
                 for task in ordered_tasks
             ],
@@ -1811,6 +1867,11 @@ class TaskService:
             sample_count = len(task.task_samples)
         except Exception:
             sample_count = 0
+        sample_status_counts = self._task_sample_status_counts(task)
+        work_status = self._compute_task_work_status(
+            task.status,
+            sample_status_counts,
+        )
         try:
             dataset_name = task.dataset.name if task.dataset else None
         except Exception:
@@ -1822,6 +1883,8 @@ class TaskService:
             sample_count=sample_count,
             dataset_name=dataset_name,
             assignment_status_override=assignment_status_override,
+            work_status=work_status,
+            sample_status_counts=sample_status_counts,
         )
 
     def _build_task_response_raw(
@@ -1832,11 +1895,20 @@ class TaskService:
         sample_count: int,
         dataset_name: Optional[str] = None,
         assignment_status_override: Optional[str] = None,
+        work_status: Optional[str] = None,
+        sample_status_counts: Optional[dict[str, int]] = None,
     ) -> dict:
         """Build response dict without accessing ORM relationships."""
         status_val = task.status.value if hasattr(task.status, "value") else str(task.status)
         method_val = task.assignment_method.value if hasattr(task.assignment_method, "value") else str(task.assignment_method)
         annotation_val = task.annotation_type.value if task.annotation_type and hasattr(task.annotation_type, "value") else (str(task.annotation_type) if task.annotation_type else None)
+        if sample_status_counts is None:
+            sample_status_counts = {"pending": sample_count} if sample_count else {}
+        if work_status is None:
+            work_status = self._compute_task_work_status(
+                task.status,
+                sample_status_counts,
+            )
         assignment_status = assignment_status_override or (
             "not_started"
             if task.status == TaskStatus.TODO
@@ -1861,6 +1933,8 @@ class TaskService:
             "reviewer_id": task.reviewer_id,
             "reviewer_name": reviewer_name,
             "dataset_name": dataset_name,
+            "work_status": work_status,
+            "sample_status_counts": sample_status_counts,
             "assigned_at": task.assigned_at,
             "started_at": task.started_at,
             "submitted_at": task.submitted_at,
