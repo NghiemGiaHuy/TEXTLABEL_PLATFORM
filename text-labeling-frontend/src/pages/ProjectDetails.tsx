@@ -4230,7 +4230,7 @@ function LabelsTab({
 
   const TYPE_BADGE: Record<'tc' | 'sl' | 're', { label: string; cls: string }> = {
     tc: { label: 'Text Classification',  cls: 'bg-brand-50 text-brand-600' },
-    sl: { label: 'Sequence Labeling',    cls: 'bg-purple-50 text-purple-600' },
+    sl: { label: 'Named Entity Recognition', cls: 'bg-purple-50 text-purple-600' },
     re: { label: 'Relation Extraction',  cls: 'bg-emerald-50 text-emerald-600' },
   };
 
@@ -4261,7 +4261,7 @@ function LabelsTab({
           <NERIllustration />
           <div className="absolute inset-0 bg-gradient-to-t from-white via-white/60 to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 p-4">
-            <p className="text-base font-bold text-surface-900">Sequence Labeling</p>
+            <p className="text-base font-bold text-surface-900">Named Entity Recognition</p>
             <p className="text-xs text-surface-500 mt-0.5">Đánh dấu thực thể trong từng đoạn văn bản</p>
           </div>
         </button>
@@ -4716,7 +4716,7 @@ function NERLabelModal({
   ];
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={editingSet ? 'Chỉnh sửa — Sequence Labeling' : 'Sequence Labeling'} maxWidth="max-w-4xl">
+    <Modal isOpen={isOpen} onClose={onClose} title={editingSet ? 'Chỉnh sửa — Named Entity Recognition' : 'Named Entity Recognition'} maxWidth="max-w-4xl">
       <div className="grid grid-cols-2 gap-6">
         {/* Left: config */}
         <div className="space-y-4">
