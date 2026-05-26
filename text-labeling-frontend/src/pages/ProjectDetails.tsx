@@ -112,6 +112,48 @@ function isAnnotateTaskCompleted(task: Pick<Task, 'status' | 'task_status' | 'as
   return ['submitted', 'approved'].includes(getTaskLifecycleStatus(task));
 }
 
+type TaskAssignmentGroup = {
+  key: string;
+  tasks: Task[];
+  primaryTask: Task;
+};
+
+function getTaskAssignmentGroupKey(task: Task) {
+  return [
+    task.dataset_id,
+    task.assignment_method,
+    task.assigned_by,
+    task.annotation_type ?? task.task_type ?? '',
+    task.label_set_id ?? '',
+  ].join('|');
+}
+
+function sortTasksByAssignment(items: Task[]) {
+  return [...items].sort((a, b) => {
+    const byAssignedAt = (a.assigned_at ?? '').localeCompare(b.assigned_at ?? '');
+    return byAssignedAt || a.id.localeCompare(b.id);
+  });
+}
+
+function getTaskAssignmentGroups(items: Task[]): TaskAssignmentGroup[] {
+  return Array.from(
+    sortTasksByAssignment(items).reduce<Map<string, Task[]>>((groups, task) => {
+      const key = getTaskAssignmentGroupKey(task);
+      const groupTasks = groups.get(key) ?? [];
+      groupTasks.push(task);
+      groups.set(key, groupTasks);
+      return groups;
+    }, new Map())
+  ).reduce<TaskAssignmentGroup[]>((groups, [key, groupTasks]) => {
+    const sortedTasks = sortTasksByAssignment(groupTasks);
+    const primaryTask = sortedTasks[0];
+    if (!primaryTask) return groups;
+
+    groups.push({ key, tasks: sortedTasks, primaryTask });
+    return groups;
+  }, []);
+}
+
 // ─── Tab types ──────────────────────────────────────────────
 type TabKey = 'overview' | 'data_type' | 'labels' | 'datasets' | 'tasks' | 'reviews' | 'completed_tasks' | 'assign';
 type BadgeVariant = 'red' | 'green' | undefined;
@@ -1297,36 +1339,7 @@ function TasksTab({
     );
   }
 
-  const getTasksTabGroupKey = (task: Task) => [
-    task.dataset_id,
-    task.assignment_method,
-    task.assigned_by,
-    task.annotation_type ?? task.task_type ?? '',
-    task.label_set_id ?? '',
-  ].join('|');
-
-  const sortTasksByAssignment = (items: Task[]) =>
-    [...items].sort((a, b) => {
-      const byAssignedAt = (a.assigned_at ?? '').localeCompare(b.assigned_at ?? '');
-      return byAssignedAt || a.id.localeCompare(b.id);
-    });
-
-  const taskGroups = Array.from(
-    sortTasksByAssignment(tasks).reduce<Map<string, Task[]>>((groups, task) => {
-      const key = getTasksTabGroupKey(task);
-      const groupTasks = groups.get(key) ?? [];
-      groupTasks.push(task);
-      groups.set(key, groupTasks);
-      return groups;
-    }, new Map())
-  ).reduce<Array<{ key: string; tasks: Task[]; primaryTask: Task }>>((groups, [key, groupTasks]) => {
-    const sortedTasks = sortTasksByAssignment(groupTasks);
-    const primaryTask = sortedTasks[0];
-    if (!primaryTask) return groups;
-
-    groups.push({ key, tasks: sortedTasks, primaryTask });
-    return groups;
-  }, []);
+  const taskGroups = getTaskAssignmentGroups(tasks);
 
   return (
     <div className="bg-surface-0 rounded-xl border border-surface-200 shadow-subtle overflow-hidden">
@@ -1346,10 +1359,6 @@ function TasksTab({
           <tbody className="divide-y divide-surface-100">
             {taskGroups.map((group) => {
               const task = group.primaryTask;
-              const actionTask =
-                projectRole === 'annotator'
-                  ? group.tasks.find((item) => item.assignee_id === currentUserId) ?? task
-                  : task;
               return (
                 <tr key={group.key} className="hover:bg-surface-50/50 transition-colors">
                   <td className="px-5 py-3.5 align-middle">
@@ -1408,12 +1417,18 @@ function TasksTab({
                       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
                     })}
                   </td>
-                  <td className="px-5 py-3.5 text-right align-middle">
-                    <TaskActionButton
-                      task={actionTask}
-                      projectId={projectId}
-                      canAnnotate={projectRole === 'annotator' && actionTask.assignee_id === currentUserId}
-                    />
+                  <td className="px-5 py-3.5 text-right">
+                    <div className="flex flex-col items-end gap-3">
+                      {group.tasks.map((item) => (
+                        <div key={item.id} className="flex min-h-[56px] items-center justify-end">
+                          <TaskActionButton
+                            task={item}
+                            projectId={projectId}
+                            canAnnotate={projectRole === 'annotator' && item.assignee_id === currentUserId}
+                          />
+                        </div>
+                      ))}
+                    </div>
                   </td>
                 </tr>
               );
@@ -1505,6 +1520,8 @@ function ReviewsTab({
 }) {
   const pendingTasks = tasks.filter((t) => getTaskLifecycleStatus(t) === 'submitted');
   const reworkTasks = tasks.filter((t) => getTaskLifecycleStatus(t) === 'rework');
+  const pendingTaskGroups = getTaskAssignmentGroups(pendingTasks);
+  const reworkTaskGroups = getTaskAssignmentGroups(reworkTasks);
 
   if (pendingTasks.length === 0 && reworkTasks.length === 0) {
     return (
@@ -1524,13 +1541,14 @@ function ReviewsTab({
           <div className="px-5 py-3 border-b border-surface-100 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-purple-500" />
             <h3 className="text-sm font-semibold text-surface-800">Chờ duyệt</h3>
-            <span className="text-xs text-surface-400">{pendingTasks.length} task</span>
+            <span className="text-xs text-surface-400">{pendingTaskGroups.length} task</span>
           </div>
           <ReviewTaskTable
             tasks={pendingTasks}
             projectId={projectId}
             currentUserId={currentUserId}
             projectRole={projectRole}
+            groupRows
           />
         </div>
       )}
@@ -1541,13 +1559,14 @@ function ReviewsTab({
           <div className="px-5 py-3 border-b border-surface-100 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-orange-500" />
             <h3 className="text-sm font-semibold text-surface-800">Đang sửa lại</h3>
-            <span className="text-xs text-surface-400">{reworkTasks.length} task</span>
+            <span className="text-xs text-surface-400">{reworkTaskGroups.length} task</span>
           </div>
           <ReviewTaskTable
             tasks={reworkTasks}
             projectId={projectId}
             currentUserId={currentUserId}
             projectRole={projectRole}
+            groupRows
           />
         </div>
       )}
@@ -1585,12 +1604,18 @@ function ReviewTaskTable({
   projectId,
   currentUserId,
   projectRole,
+  groupRows = false,
 }: {
   tasks: Task[];
   projectId: string;
   currentUserId?: string;
   projectRole?: string;
+  groupRows?: boolean;
 }) {
+  const taskGroups = groupRows
+    ? getTaskAssignmentGroups(tasks)
+    : tasks.map((task) => ({ key: task.id, tasks: [task], primaryTask: task }));
+
   return (
     <table className="w-full">
       <thead>
@@ -1605,82 +1630,114 @@ function ReviewTaskTable({
         </tr>
       </thead>
       <tbody className="divide-y divide-surface-100">
-        {tasks.map((task) => {
-          const canReview =
-            projectRole === 'reviewer' &&
-            (!task.reviewer_id || task.reviewer_id === currentUserId);
-          const reviewPath = `/review/${projectId}/${task.id}${canReview ? '' : '?mode=view'}`;
+        {taskGroups.map((group) => {
+          const task = group.primaryTask;
 
           return (
-          <tr key={task.id} className="hover:bg-surface-50/50 transition-colors">
-            <td className="px-5 py-3.5">
+          <tr key={group.key} className="hover:bg-surface-50/50 transition-colors">
+            <td className="px-5 py-3.5 align-middle">
               <span className="text-xs font-mono text-surface-500 bg-surface-50 px-2 py-0.5 rounded">
                 {task.id.slice(0, 8)}…
               </span>
             </td>
-            <td className="px-5 py-3.5 max-w-[160px]">
+            <td className="px-5 py-3.5 max-w-[160px] align-middle">
               <span className="text-sm text-surface-800 truncate block" title={task.dataset_name ?? ''}>
                 {task.dataset_name || '—'}
               </span>
             </td>
             <td className="px-5 py-3.5">
-              <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[10px] font-bold shrink-0">
-                  {task.assignee_name
-                    ?.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || '??'}
-                </div>
-                <span className="text-sm text-surface-800">{task.assignee_name || 'Unknown'}</span>
+              <div className="flex flex-col gap-3">
+                {group.tasks.map((item) => (
+                  <div key={item.id} className="flex min-h-[56px] items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+                      {item.assignee_name
+                        ?.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || '??'}
+                    </div>
+                    <span className="text-sm text-surface-800">{item.assignee_name || 'Unknown'}</span>
+                  </div>
+                ))}
               </div>
             </td>
             <td className="px-5 py-3.5 text-sm text-surface-600 font-medium">
-              {task.sample_count}
+              <div className="flex flex-col gap-3">
+                {group.tasks.map((item) => (
+                  <div key={item.id} className="flex min-h-[56px] items-center">
+                    {item.sample_count}
+                  </div>
+                ))}
+              </div>
             </td>
             <td className="px-5 py-3.5">
-              <StatusBadge status={getTaskLifecycleStatus(task)} />
+              <div className="flex flex-col gap-3">
+                {group.tasks.map((item) => (
+                  <div key={item.id} className="flex min-h-[56px] items-center">
+                    <StatusBadge status={getTaskLifecycleStatus(item)} />
+                  </div>
+                ))}
+              </div>
             </td>
             <td className="px-5 py-3.5 text-sm text-surface-500">
-              {task.submitted_at
-                ? new Date(task.submitted_at).toLocaleDateString('vi-VN', {
-                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-                  })
-                : '—'}
+              <div className="flex flex-col gap-3">
+                {group.tasks.map((item) => (
+                  <div key={item.id} className="flex min-h-[56px] items-center">
+                    {item.submitted_at
+                      ? new Date(item.submitted_at).toLocaleDateString('vi-VN', {
+                          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                        })
+                      : '—'}
+                  </div>
+                ))}
+              </div>
             </td>
             <td className="px-5 py-3.5 text-right">
-              {getTaskLifecycleStatus(task) === 'submitted' ? (
-                canReview ? (
-                  <Link
-                    to={reviewPath}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 transition-colors"
-                  >
-                    <Eye className="w-3 h-3" />
-                    Duyệt ngay
-                  </Link>
-                ) : (
-                  <Link
-                    to={reviewPath}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-surface-600 bg-surface-100 hover:bg-surface-200 transition-colors"
-                  >
-                    <Eye className="w-3 h-3" />
-                    Xem
-                  </Link>
-                )
-              ) : isApprovedTask(task) ? (
-                <Link
-                  to={reviewPath}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
-                >
-                  <Eye className="w-3 h-3" />
-                  Xem lại
-                </Link>
-              ) : (
-                <Link
-                  to={reviewPath}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-orange-700 bg-orange-50 hover:bg-orange-100 transition-colors"
-                >
-                  <Eye className="w-3 h-3" />
-                  Xem
-                </Link>
-              )}
+              <div className="flex flex-col items-end gap-3">
+                {group.tasks.map((item) => {
+                  const canReview =
+                    projectRole === 'reviewer' &&
+                    (!item.reviewer_id || item.reviewer_id === currentUserId);
+                  const reviewPath = `/review/${projectId}/${item.id}${canReview ? '' : '?mode=view'}`;
+
+                  return (
+                    <div key={item.id} className="flex min-h-[56px] items-center justify-end">
+                      {getTaskLifecycleStatus(item) === 'submitted' ? (
+                        canReview ? (
+                          <Link
+                            to={reviewPath}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 transition-colors"
+                          >
+                            <Eye className="w-3 h-3" />
+                            Duyệt ngay
+                          </Link>
+                        ) : (
+                          <Link
+                            to={reviewPath}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-surface-600 bg-surface-100 hover:bg-surface-200 transition-colors"
+                          >
+                            <Eye className="w-3 h-3" />
+                            Xem
+                          </Link>
+                        )
+                      ) : isApprovedTask(item) ? (
+                        <Link
+                          to={reviewPath}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                        >
+                          <Eye className="w-3 h-3" />
+                          Xem lại
+                        </Link>
+                      ) : (
+                        <Link
+                          to={reviewPath}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-orange-700 bg-orange-50 hover:bg-orange-100 transition-colors"
+                        >
+                          <Eye className="w-3 h-3" />
+                          Xem
+                        </Link>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </td>
           </tr>
           );
