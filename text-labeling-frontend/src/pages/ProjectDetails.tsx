@@ -3550,13 +3550,124 @@ function MembersTab({
 // ─────────────────────────────────────────────────────────────
 const ACCEPTED_FORMATS = ['.csv', '.json', '.jsonl'] as const;
 
-function parseFileSamples(text: string, ext: string): string[] {
+type ParsedImportSample = { content: string; metadata?: Record<string, unknown> };
+type ImportedNerAnnotation = { label: string; start: number; end: number; text: string };
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseJsonField(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+function normalizeNerAnnotation(raw: unknown, content: string): ImportedNerAnnotation | null {
+  if (!isPlainRecord(raw)) return null;
+  const label = raw.label ?? raw.label_name ?? raw.type ?? raw.entity_label ?? raw.name;
+  const startRaw = raw.start ?? raw.start_offset ?? raw.begin;
+  const endRaw = raw.end ?? raw.end_offset ?? raw.stop;
+  const start = Number(startRaw);
+  const end = Number(endRaw);
+  if (typeof label !== 'string' || !Number.isFinite(start) || !Number.isFinite(end)) return null;
+  if (start < 0 || end <= start || end > content.length) return null;
+  const text = typeof raw.text === 'string'
+    ? raw.text
+    : typeof raw.selected_text === 'string'
+      ? raw.selected_text
+      : content.slice(start, end);
+  return { label, start, end, text };
+}
+
+function buildParsedSample(item: unknown): ParsedImportSample | null {
+  if (typeof item === 'string') {
+    const content = item.trim();
+    return content ? { content } : null;
+  }
+
+  if (!isPlainRecord(item)) return null;
+
+  const rawContent = item.content ?? item.text ?? item.sentence ?? item.data;
+  const content = typeof rawContent === 'string' ? rawContent.trim() : JSON.stringify(item);
+  if (!content) return null;
+
+  const rawAnnotations = parseJsonField(
+    item.annotations ?? item.entities ?? item.ner_annotations
+  );
+  const annotations = Array.isArray(rawAnnotations)
+    ? rawAnnotations
+        .map((ann) => normalizeNerAnnotation(ann, content))
+        .filter((ann): ann is ImportedNerAnnotation => ann !== null)
+    : [];
+
+  const rawMetadata = parseJsonField(item.metadata);
+  const metadata: Record<string, unknown> = isPlainRecord(rawMetadata)
+    ? { ...rawMetadata }
+    : {};
+  const sourceSampleId = item.sample_id ?? item.id;
+  if (typeof sourceSampleId === 'string' && sourceSampleId.trim()) {
+    metadata.source_sample_id = sourceSampleId;
+  }
+  if (annotations.length > 0) {
+    metadata.ner_annotations = annotations;
+    metadata.source_annotation_format = 'ner_export';
+  }
+
+  return Object.keys(metadata).length > 0 ? { content, metadata } : { content };
+}
+
+function parseCsvRows(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (ch === '"') {
+      if (inQuotes && next === '"') {
+        field += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (ch === ',' && !inQuotes) {
+      row.push(field);
+      field = '';
+      continue;
+    }
+    if ((ch === '\n' || ch === '\r') && !inQuotes) {
+      if (ch === '\r' && next === '\n') i += 1;
+      row.push(field);
+      if (row.some((cell) => cell.trim())) rows.push(row);
+      row = [];
+      field = '';
+      continue;
+    }
+    field += ch;
+  }
+
+  row.push(field);
+  if (row.some((cell) => cell.trim())) rows.push(row);
+  return rows;
+}
+
+function parseFileSamples(text: string, ext: string): ParsedImportSample[] {
   if (ext === 'json') {
     const data = JSON.parse(text);
     if (Array.isArray(data)) {
-      return data.map((item) =>
-        typeof item === 'string' ? item : (item.content ?? item.text ?? item.sentence ?? JSON.stringify(item))
-      );
+      return data
+        .map(buildParsedSample)
+        .filter((sample): sample is ParsedImportSample => sample !== null);
     }
     return [];
   }
@@ -3567,31 +3678,38 @@ function parseFileSamples(text: string, ext: string): string[] {
       .map((l) => {
         try {
           const obj = JSON.parse(l);
-          return typeof obj === 'string' ? obj : (obj.content ?? obj.text ?? obj.sentence ?? JSON.stringify(obj));
+          return buildParsedSample(obj);
         } catch {
-          return l.trim();
+          return buildParsedSample(l);
         }
       })
-      .filter(Boolean);
+      .filter((sample): sample is ParsedImportSample => sample !== null);
   }
   if (ext === 'csv') {
-    const lines = text.split('\n').filter((l) => l.trim());
-    if (lines.length < 2) return [];
-    const headers = lines[0].split(',').map((h) => h.trim().replace(/^"|"$/g, '').toLowerCase());
+    const rows = parseCsvRows(text);
+    if (rows.length < 2) return [];
+    const headers = rows[0].map((h) => h.trim().toLowerCase());
     const contentIdx = headers.findIndex((h) => ['content', 'text', 'sentence', 'data', 'sample'].includes(h));
-    return lines
+    const annotationsIdx = headers.findIndex((h) => ['annotations', 'entities', 'ner_annotations'].includes(h));
+    const metadataIdx = headers.findIndex((h) => h === 'metadata');
+    const sampleIdIdx = headers.findIndex((h) => ['sample_id', 'id'].includes(h));
+    return rows
       .slice(1)
-      .map((line) => {
-        const cols = line.split(',');
-        const val = contentIdx >= 0 && cols[contentIdx] ? cols[contentIdx] : cols[0];
-        return val?.replace(/^"|"$/g, '').trim() ?? '';
+      .map((cols) => {
+        const item: Record<string, unknown> = {
+          content: contentIdx >= 0 ? cols[contentIdx] : cols[0],
+        };
+        if (annotationsIdx >= 0) item.annotations = parseJsonField(cols[annotationsIdx]);
+        if (metadataIdx >= 0) item.metadata = parseJsonField(cols[metadataIdx]);
+        if (sampleIdIdx >= 0) item.sample_id = cols[sampleIdIdx];
+        return buildParsedSample(item);
       })
-      .filter(Boolean);
+      .filter((sample): sample is ParsedImportSample => sample !== null);
   }
   return [];
 }
 
-type FileEntry = { id: string; file: File; samples: string[]; error?: string };
+type FileEntry = { id: string; file: File; samples: ParsedImportSample[]; error?: string };
 
 function ImportDataModal({
   isOpen,
@@ -3671,7 +3789,10 @@ function ImportDataModal({
           await taskApi.importDataset(projectId, {
             name: entry.file.name.replace(/\.[^.]+$/, ''),
             source_format: ext,
-            samples: entry.samples.map((content) => ({ content })),
+            samples: entry.samples,
+            field_mapping: entry.samples.some((sample) => sample.metadata?.ner_annotations)
+              ? { content: 'content', entities: 'metadata.ner_annotations' }
+              : undefined,
           });
         } catch (err: unknown) {
           errs.push(`${entry.file.name}: ${extractErrorMessage(err, 'Import thất bại')}`);
@@ -3830,12 +3951,24 @@ function ImportDataModal({
       {previewEntry && (
         <Modal isOpen onClose={() => setPreviewEntry(null)} title={`Xem trước — ${previewEntry.file.name}`} maxWidth="max-w-2xl">
           <div className="space-y-1.5 max-h-[60vh] overflow-y-auto pr-1">
-            {previewEntry.samples.slice(0, 100).map((s, i) => (
+            {previewEntry.samples.slice(0, 100).map((s, i) => {
+              const entityCount = Array.isArray(s.metadata?.ner_annotations)
+                ? s.metadata.ner_annotations.length
+                : 0;
+              return (
               <div key={i} className="flex gap-3 px-3 py-2 rounded-lg bg-surface-50 border border-surface-200/60">
                 <span className="text-xs text-surface-400 font-mono shrink-0 mt-0.5 w-6 text-right">{i + 1}</span>
-                <p className="text-sm text-surface-700 leading-relaxed">{s}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-surface-700 leading-relaxed">{s.content}</p>
+                  {entityCount > 0 && (
+                    <span className="mt-1 inline-flex rounded bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                      {entityCount} NER entities
+                    </span>
+                  )}
+                </div>
               </div>
-            ))}
+              );
+            })}
             {previewEntry.samples.length > 100 && (
               <p className="text-xs text-surface-400 text-center py-2">
                 … và {previewEntry.samples.length - 100} sample khác
@@ -5169,7 +5302,7 @@ function RelationExtractionModal({
     customColors[name] ?? editingSet?.labels.find((label) => label.name === name)?.color ?? LABEL_COLORS[idx % LABEL_COLORS.length];
 
   const handleSubmit = async () => {
-    if (nerLabelNames.length === 0 || labelNames.length === 0) return;
+    if (labelNames.length === 0) return;
     setSubmitting(true);
     setError('');
     try {
@@ -5197,8 +5330,14 @@ function RelationExtractionModal({
         });
       };
 
-      const nerGroup = await ensureGroup(RE_NER_GROUP_NAME, 0, isNerGroupName);
-      const relationGroup = await ensureGroup(RE_RELATION_GROUP_NAME, 1, isRelationGroupName);
+      const nerGroup = nerLabelNames.length > 0
+        ? await ensureGroup(RE_NER_GROUP_NAME, 0, isNerGroupName)
+        : null;
+      const relationGroup = await ensureGroup(
+        RE_RELATION_GROUP_NAME,
+        nerGroup ? 1 : 0,
+        isRelationGroupName
+      );
 
       const syncLabels = async (
         names: string[],
@@ -5235,11 +5374,16 @@ function RelationExtractionModal({
         }
       };
 
-      await syncLabels(nerLabelNames, nerGroup.id, 0);
+      if (nerGroup) {
+        await syncLabels(nerLabelNames, nerGroup.id, 0);
+      }
       await syncLabels(labelNames, relationGroup.id, nerLabelNames.length, true);
 
       if (editingSet) {
-        const syncedGroupIds = new Set([nerGroup.id, relationGroup.id]);
+        const syncedGroupIds = new Set([
+          ...(nerGroup ? [nerGroup.id] : []),
+          relationGroup.id,
+        ]);
         const staleGroupedLabels = editingSet.labels.filter((label) =>
           label.label_group_id && !syncedGroupIds.has(label.label_group_id)
         );
@@ -5256,8 +5400,8 @@ function RelationExtractionModal({
   };
 
   const previewRelations = [
-    { head: 'Nguyễn Văn A', rel: labelNames[0], tail: 'Công ty ABC', relIdx: 0 },
-    { head: 'Công ty ABC', rel: labelNames[1], tail: 'Hà Nội', relIdx: 1 },
+    { head: 'Nguyễn Văn A', rel: labelNames[0], tail: 'Công ty ABC', relIdx: nerLabelNames.length },
+    { head: 'Công ty ABC', rel: labelNames[1], tail: 'Hà Nội', relIdx: nerLabelNames.length + 1 },
   ].filter((r) => r.rel);
   const previewEntityLabels = [
     { text: 'Nguyễn Văn A', label: nerLabelNames[0], idx: 0 },
@@ -5286,12 +5430,12 @@ function RelationExtractionModal({
           <div>
             <label className="block text-sm font-medium text-surface-700 mb-1.5">
               Nhãn NER
-              <span className="ml-1.5 text-xs font-normal text-surface-400">(mỗi dòng một nhãn)</span>
+              <span className="ml-1.5 text-xs font-normal text-surface-400">(tuỳ chọn, mỗi dòng một nhãn)</span>
             </label>
             <textarea
               value={nerLabelsText}
               onChange={(e) => setNerLabelsText(e.target.value)}
-              placeholder={'PERSON\nORG\nLOCATION'}
+              placeholder={'Để trống nếu dùng entity từ file export NER'}
               rows={4}
               className="input-field resize-none"
             />
@@ -5404,7 +5548,7 @@ function RelationExtractionModal({
                     <div key={i + 2} className="flex items-center gap-2">
                       <span
                         className="px-3 py-1 rounded-lg text-sm font-medium text-white"
-                        style={{ backgroundColor: getColor(name, i + 2) }}
+                        style={{ backgroundColor: getColor(name, nerLabelNames.length + i + 2) }}
                       >
                         {name}
                       </span>
@@ -5428,7 +5572,7 @@ function RelationExtractionModal({
         <button onClick={onClose} disabled={submitting} className="btn-ghost">Hủy</button>
         <button
           onClick={handleSubmit}
-          disabled={nerLabelNames.length === 0 || labelNames.length === 0 || submitting}
+          disabled={labelNames.length === 0 || submitting}
           className="btn-primary"
         >
           {submitting && <Loader2 className="w-4 h-4 animate-spin" />}

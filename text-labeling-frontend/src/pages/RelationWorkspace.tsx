@@ -41,6 +41,17 @@ interface Entity {
   color: string;
 }
 
+const IMPORTED_ENTITY_COLORS = [
+  '#8B5CF6',
+  '#F97316',
+  '#10B981',
+  '#3B82F6',
+  '#EC4899',
+  '#14B8A6',
+  '#EAB308',
+  '#EF4444',
+];
+
 interface Relation {
   id: string;
   headId: string;   // entity.id
@@ -69,6 +80,62 @@ function buildEntities(annotations: Annotation[]): Entity[] {
       label: ann.label_name ?? '',
       color: ann.label_color ?? '#6366F1',
     }));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function metadataArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function buildMetadataEntities(sample: AnnotationSampleResponse): Entity[] {
+  const metadata = sample.metadata;
+  if (!isRecord(metadata)) return [];
+  const rawItems = [
+    ...metadataArray(metadata.ner_annotations),
+    ...metadataArray(metadata.annotations),
+    ...metadataArray(metadata.entities),
+  ];
+  const seen = new Set<string>();
+
+  return rawItems.flatMap((item, index): Entity[] => {
+    if (!isRecord(item)) return [];
+    const label = item.label ?? item.label_name ?? item.type ?? item.entity_label ?? item.name;
+    const start = Number(item.start ?? item.start_offset ?? item.begin);
+    const end = Number(item.end ?? item.end_offset ?? item.stop);
+    if (typeof label !== 'string' || !Number.isFinite(start) || !Number.isFinite(end)) return [];
+    if (start < 0 || end <= start || end > sample.content.length) return [];
+    const key = `${start}:${end}:${label}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{
+      id: `imported-${start}-${end}-${label}-${index}`,
+      text: typeof item.text === 'string'
+        ? item.text
+        : typeof item.selected_text === 'string'
+          ? item.selected_text
+          : sample.content.slice(start, end),
+      start,
+      end,
+      label,
+      color: typeof item.label_color === 'string'
+        ? item.label_color
+        : typeof item.color === 'string'
+          ? item.color
+          : IMPORTED_ENTITY_COLORS[index % IMPORTED_ENTITY_COLORS.length],
+    }];
+  });
 }
 
 function restoreRelations(
@@ -482,9 +549,13 @@ export default function RelationWorkspace() {
       const currentEntityAnnotations = dataHasGroups
         ? data.annotations.filter((ann) => nerLabelIds.has(ann.label_id))
         : [];
+      const importedEntities = buildMetadataEntities(data);
       const ents = mergeEntities(
-        buildEntities(currentEntityAnnotations),
-        buildEntities(nerAnnotations)
+        mergeEntities(
+          buildEntities(currentEntityAnnotations),
+          buildEntities(nerAnnotations)
+        ),
+        importedEntities
       );
       const restoredRelations = restoreRelations(data, ents);
       const draftData = data.draft?.draft_data as { entityStepSaved?: boolean } | undefined;
@@ -502,7 +573,11 @@ export default function RelationWorkspace() {
       setSelectedRelLabelId('');
       setEditingRelId(null);
       setSelection(null);
-      setWorkspaceStep(!dataHasGroups || draftData?.entityStepSaved || restoredRelations.length > 0 ? 'relations' : 'entities');
+      setWorkspaceStep(
+        !dataHasGroups || importedEntities.length > 0 || draftData?.entityStepSaved || restoredRelations.length > 0
+          ? 'relations'
+          : 'entities'
+      );
       entityRefs.current = {};
     } catch (err) {
       const e = err as { response?: { data?: { detail?: string } } };
