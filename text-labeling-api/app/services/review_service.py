@@ -55,25 +55,18 @@ class ReviewService:
         """Get review queue: submitted task_samples in reviewer's projects."""
         # Get projects where user is a reviewer
         reviewer_projects = await self.db.execute(
-            select(ProjectMember.project_id, ProjectMember.role_in_project).where(
+            select(ProjectMember.project_id).where(
                 and_(
                     ProjectMember.user_id == current_user.id,
-                    ProjectMember.role_in_project.in_(
-                        [ProjectRole.REVIEWER, ProjectRole.PROJECT_OWNER]
-                    ),
+                    ProjectMember.role_in_project == ProjectRole.REVIEWER,
                 )
             )
         )
         reviewer_project_ids = set()
-        owner_project_ids = set()
         for project_member in reviewer_projects.all():
             project_id_value = project_member[0]
-            role_value = project_member[1]
-            if role_value == ProjectRole.PROJECT_OWNER:
-                owner_project_ids.add(project_id_value)
-            else:
-                reviewer_project_ids.add(project_id_value)
-        project_ids = reviewer_project_ids | owner_project_ids
+            reviewer_project_ids.add(project_id_value)
+        project_ids = set(reviewer_project_ids)
 
         if RoleName.ADMIN.value in current_user.role_names:
             # Admin can review any project
@@ -89,7 +82,6 @@ class ReviewService:
                 )
             project_ids = {project_id}
             reviewer_project_ids &= project_ids
-            owner_project_ids &= project_ids
 
         if not project_ids:
             return {
@@ -110,8 +102,6 @@ class ReviewService:
                         ),
                     )
                 )
-            if owner_project_ids:
-                assignment_filters.append(Task.project_id.in_(owner_project_ids))
             if assignment_filters:
                 scope_filters.append(or_(*assignment_filters))
 
@@ -189,7 +179,7 @@ class ReviewService:
     async def get_review_sample(
         self, task_id: UUID, task_sample_id: UUID, current_user: User
     ) -> dict:
-        await self._check_reviewer_access(task_id, current_user)
+        await self._check_review_view_access(task_id, current_user)
 
         ts_result = await self.db.execute(
             select(TaskSample)
@@ -570,9 +560,7 @@ class ReviewService:
                 actor_name=actor_name,
             )
 
-    async def _check_reviewer_access(
-        self, task_id: UUID, user: User
-    ) -> Task:
+    async def _load_task_with_samples(self, task_id: UUID) -> Task:
         result = await self.db.execute(
             select(Task)
             .options(
@@ -585,31 +573,54 @@ class ReviewService:
         task = result.scalar_one_or_none()
         if not task:
             raise NotFoundException(f"Task '{task_id}' not found")
+        return task
 
-        if RoleName.ADMIN.value in user.role_names:
+    async def _check_review_view_access(
+        self, task_id: UUID, user: User
+    ) -> Task:
+        task = await self._load_task_with_samples(task_id)
+        if (
+            task.assignee_id == user.id
+            or task.reviewer_id == user.id
+            or RoleName.ADMIN.value in user.role_names
+        ):
             return task
 
-        # Check reviewer membership
         member_result = await self.db.execute(
             select(ProjectMember).where(
                 and_(
                     ProjectMember.project_id == task.project_id,
                     ProjectMember.user_id == user.id,
-                    ProjectMember.role_in_project.in_(
-                        [ProjectRole.REVIEWER, ProjectRole.PROJECT_OWNER]
-                    ),
+                )
+            )
+        )
+        if not member_result.scalar_one_or_none():
+            raise ForbiddenException("You don't have access to this task")
+
+        return task
+
+    async def _check_reviewer_access(
+        self, task_id: UUID, user: User
+    ) -> Task:
+        task = await self._load_task_with_samples(task_id)
+        if task.reviewer_id and task.reviewer_id == user.id:
+            return task
+
+        member_result = await self.db.execute(
+            select(ProjectMember).where(
+                and_(
+                    ProjectMember.project_id == task.project_id,
+                    ProjectMember.user_id == user.id,
+                    ProjectMember.role_in_project == ProjectRole.REVIEWER,
                 )
             )
         )
         member = member_result.scalar_one_or_none()
         if not member:
-            raise ForbiddenException(
-                "You must be a reviewer or PO in this project"
-            )
+            raise ForbiddenException("You must be the assigned reviewer for this task")
         if (
             task.reviewer_id
             and task.reviewer_id != user.id
-            and member.role_in_project != ProjectRole.PROJECT_OWNER
         ):
             raise ForbiddenException(
                 "This task is assigned to a different reviewer"

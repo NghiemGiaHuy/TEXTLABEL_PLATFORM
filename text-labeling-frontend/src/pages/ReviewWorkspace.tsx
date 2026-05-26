@@ -9,7 +9,7 @@ import {
   type MutableRefObject,
   type RefObject,
 } from 'react';
-import { useParams, Link, useOutletContext } from 'react-router-dom';
+import { useParams, Link, useOutletContext, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   ChevronLeft,
@@ -27,10 +27,13 @@ import {
   RefreshCw,
   ExternalLink,
   Send,
+  Eye,
 } from 'lucide-react';
 import { annotationApi } from '../api/annotationApi';
+import { taskApi } from '../api/taskApi';
 import { reviewApi, type ReviewAnnotation, type ReviewSampleDetail, type ReviewRecord } from '../api/reviewApi';
 import { useToast } from '../components/toastContext';
+import { useAuthStore } from '../store/authStore';
 import type { TaskDetail } from '../types';
 
 // ─── Color utility ──────────────────────────────────────────
@@ -446,13 +449,17 @@ function ReviewBottomBar({
 // ============================================================
 export default function ReviewWorkspace() {
   const { projectId, taskId } = useParams<{ projectId: string; taskId: string }>();
+  const [searchParams] = useSearchParams();
   const { sidebarOpen } = useOutletContext<{ sidebarOpen: boolean }>();
   const { showToast } = useToast();
+  const { user } = useAuthStore();
+  const explicitViewMode = searchParams.get('mode') === 'view';
 
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [currentSampleIndex, setCurrentSampleIndex] = useState(0);
   const [sampleDetail, setSampleDetail] = useState<ReviewSampleDetail | null>(null);
   const [rejectionMap, setRejectionMap] = useState<Record<string, { feedback: string; reviewer_name: string | null; reviewed_at: string }>>({});
+  const [projectRole, setProjectRole] = useState<string | undefined>();
 
   const [loading, setLoading] = useState(true);
   const [sampleLoading, setSampleLoading] = useState(false);
@@ -483,18 +490,20 @@ export default function ReviewWorkspace() {
   const reloadTask = useCallback(async (): Promise<TaskDetail | null> => {
     if (!projectId || !taskId) return null;
     try {
-      const [t, fb] = await Promise.all([
+      const [t, fb, memberList] = await Promise.all([
         annotationApi.getTask(projectId, taskId),
         annotationApi.getRejectionFeedback(taskId).catch(() => ({ feedback: {} })),
+        taskApi.getMembers(projectId).catch(() => ({ members: [] })),
       ]);
       const normalizedTask = normalizeTaskStatus(t);
       setTask(normalizedTask);
       setRejectionMap(fb.feedback);
+      setProjectRole(memberList.members.find((member) => member.user_id === user?.id)?.role_in_project);
       return normalizedTask;
     } catch {
       return null;
     }
-  }, [projectId, taskId]);
+  }, [projectId, taskId, user?.id]);
 
   // ─── Load task on mount ──────────────────────────────────
   useEffect(() => {
@@ -503,11 +512,13 @@ export default function ReviewWorkspace() {
     Promise.all([
       annotationApi.getTask(projectId, taskId),
       annotationApi.getRejectionFeedback(taskId).catch(() => ({ feedback: {} })),
+      taskApi.getMembers(projectId).catch(() => ({ members: [] })),
     ])
-      .then(([t, fb]) => {
+      .then(([t, fb, memberList]) => {
         const normalizedTask = normalizeTaskStatus(t);
         setTask(normalizedTask);
         setRejectionMap(fb.feedback);
+        setProjectRole(memberList.members.find((member) => member.user_id === user?.id)?.role_in_project);
         if (normalizedTask.task_samples.length > 0) {
           loadSample(taskId, normalizedTask.task_samples[0].id);
         }
@@ -517,7 +528,7 @@ export default function ReviewWorkspace() {
         setError(e.response?.data?.detail || 'Không thể tải task');
       })
       .finally(() => setLoading(false));
-  }, [projectId, taskId, loadSample]);
+  }, [projectId, taskId, user?.id, loadSample]);
 
   // ─── Navigate between samples ────────────────────────────
   const navigateSample = useCallback(
@@ -529,9 +540,17 @@ export default function ReviewWorkspace() {
     [taskId, loadSample]
   );
 
+  const canReviewTask = Boolean(
+    task &&
+    user?.id &&
+    !explicitViewMode &&
+    projectRole === 'reviewer' &&
+    (!task.reviewer_id || task.reviewer_id === user.id)
+  );
+
   // ─── Approve ────────────────────────────────────────────
   const handleApprove = useCallback(async () => {
-    if (!taskId || !sampleDetail) return;
+    if (!canReviewTask || !taskId || !sampleDetail) return;
     setActionLoading(true);
     try {
       await reviewApi.approveSample(
@@ -562,11 +581,11 @@ export default function ReviewWorkspace() {
     } finally {
       setActionLoading(false);
     }
-  }, [taskId, sampleDetail, approveFeedback, currentSampleIndex, loadSample, reloadTask, navigateSample, showToast]);
+  }, [canReviewTask, taskId, sampleDetail, approveFeedback, currentSampleIndex, loadSample, reloadTask, navigateSample, showToast]);
 
   // ─── Reject ─────────────────────────────────────────────
   const handleReject = useCallback(async () => {
-    if (!taskId || !sampleDetail || !rejectFeedback.trim()) return;
+    if (!canReviewTask || !taskId || !sampleDetail || !rejectFeedback.trim()) return;
     setActionLoading(true);
     try {
       await reviewApi.rejectSample(
@@ -597,10 +616,10 @@ export default function ReviewWorkspace() {
     } finally {
       setActionLoading(false);
     }
-  }, [taskId, sampleDetail, rejectFeedback, currentSampleIndex, loadSample, reloadTask, navigateSample, showToast]);
+  }, [canReviewTask, taskId, sampleDetail, rejectFeedback, currentSampleIndex, loadSample, reloadTask, navigateSample, showToast]);
 
   const handleSubmitReview = useCallback(async () => {
-    if (!taskId || !task) return;
+    if (!canReviewTask || !taskId || !task) return;
 
     const pendingCount = task.task_samples.filter((sample) => sample.status === 'submitted').length;
     if (pendingCount > 0) {
@@ -623,7 +642,7 @@ export default function ReviewWorkspace() {
     } finally {
       setReviewSubmitLoading(false);
     }
-  }, [taskId, task, currentSampleIndex, loadSample, reloadTask, showToast]);
+  }, [canReviewTask, taskId, task, currentSampleIndex, loadSample, reloadTask, showToast]);
 
   const annotationType = task?.annotation_type ?? task?.task_type ?? 'sequence_labeling';
   const reviewKind = getReviewWorkspaceKind(annotationType);
@@ -721,7 +740,7 @@ export default function ReviewWorkspace() {
 
         <div className="flex items-center gap-2 justify-end">
           <SampleStatusBadge status={task?.status || 'submitted'} />
-          {isReviewSubmitted ? (
+          {canReviewTask && isReviewSubmitted ? (
             <button
               onClick={handleSubmitReview}
               disabled={reviewSubmitLoading || actionLoading}
@@ -731,6 +750,11 @@ export default function ReviewWorkspace() {
               {reviewSubmitLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               Submit
             </button>
+          ) : !canReviewTask ? (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-100 text-surface-600 text-sm font-medium">
+              <Eye className="w-4 h-4" />
+              Chỉ xem
+            </div>
           ) : (
             <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${task?.status === 'approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-orange-50 text-orange-700'}`}>
               {task?.status === 'approved' ? <CheckCircle2 className="w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
@@ -852,6 +876,7 @@ export default function ReviewWorkspace() {
               isAlreadyReviewed={isAlreadyReviewed}
               sampleReviewDecision={sampleReviewDecision}
               isReviewFinalized={isReviewFinalized}
+              isReadOnly={!canReviewTask}
               taskStatus={task?.status || 'submitted'}
               isNewlyFixed={!!isNewlyFixed}
               rejectionContext={currentRejectionContext}
@@ -1289,6 +1314,7 @@ function ReviewPanel({
   isAlreadyReviewed,
   sampleReviewDecision,
   isReviewFinalized,
+  isReadOnly,
   taskStatus,
   isNewlyFixed,
   rejectionContext,
@@ -1313,6 +1339,7 @@ function ReviewPanel({
   isAlreadyReviewed: boolean;
   sampleReviewDecision: 'approved' | 'rejected' | null;
   isReviewFinalized: boolean;
+  isReadOnly: boolean;
   taskStatus: string;
   isNewlyFixed: boolean;
   rejectionContext?: { feedback: string; reviewer_name: string | null; reviewed_at: string };
@@ -1496,6 +1523,11 @@ function ReviewPanel({
           <div className={`flex items-center gap-2 p-3 rounded-xl text-sm font-medium ${sampleReviewDecision === 'approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
             {sampleReviewDecision === 'approved' ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
             {sampleReviewDecision === 'approved' ? 'Sample đã được duyệt' : 'Sample đã bị từ chối'}
+          </div>
+        ) : isReadOnly ? (
+          <div className="flex items-center gap-2 p-3 rounded-xl text-sm font-medium bg-surface-100 text-surface-600">
+            <Eye className="w-4 h-4" />
+            Chỉ xem, không thể duyệt hoặc từ chối sample
           </div>
         ) : showApproveDialog ? (
           <div className="space-y-3">

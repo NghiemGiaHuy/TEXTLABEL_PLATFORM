@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.middleware.auth_dependencies import require_roles
+from app.middleware.auth_dependencies import get_current_user, require_roles
 from app.models.user import RoleName, User
 from app.schemas.review import (
     ApproveRequest,
@@ -32,7 +32,7 @@ from app.services.review_service import ReviewService
 router = APIRouter(prefix="/reviews", tags=["Reviews & QA"])
 
 ReviewerRole = Depends(
-    require_roles(RoleName.REVIEWER, RoleName.PROJECT_OWNER, RoleName.ADMIN)
+    require_roles(RoleName.REVIEWER, RoleName.ADMIN)
 )
 
 
@@ -70,7 +70,7 @@ async def get_review_queue(
 async def get_review_sample(
     task_id: UUID,
     task_sample_id: UUID,
-    current_user: User = ReviewerRole,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """

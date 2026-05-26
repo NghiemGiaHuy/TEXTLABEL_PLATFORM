@@ -254,8 +254,6 @@ export default function ProjectDetails() {
 
   const totalSamples = project.total_samples ?? datasets.reduce((sum, ds) => sum + ds.total_samples, 0);
 
-  const submittedTaskCount = tasks.filter((t) => getTaskLifecycleStatus(t) === 'submitted').length;
-  const pendingReviewCount = Math.max(project.pending_review_samples ?? 0, submittedTaskCount);
   const approvedTaskCount = tasks.filter(isApprovedTask).length;
   const exportApprovedSampleCount =
     project.approved_samples ??
@@ -266,12 +264,14 @@ export default function ProjectDetails() {
     ? members.find((m) => m.user_id === user.id)?.role_in_project
     : undefined;
 
-  const isAdmin = user?.roles?.some((r) => r.toLowerCase().includes('admin')) ?? false;
-  const isProjectOwner = myProjectRole === 'project_owner';
-  const myAssignedTasks = tasks.filter((t) => t.assignee_id === user?.id);
-  const annotateBadgeTasks = isAdmin || isProjectOwner ? tasks : myAssignedTasks;
+  const canAnnotateTask = (task: Task) =>
+    myProjectRole === 'annotator' && task.assignee_id === user?.id;
+  const canReviewTask = (task: Task) =>
+    myProjectRole === 'reviewer' && (!task.reviewer_id || task.reviewer_id === user?.id);
+
+  const annotateBadgeTasks = tasks.filter(canAnnotateTask);
   const tasksBadge: BadgeVariant =
-    annotateBadgeTasks.length > 0 && (myProjectRole === 'annotator' || isProjectOwner || isAdmin)
+    annotateBadgeTasks.length > 0
       ? annotateBadgeTasks.some(isAnnotateTaskOpen)
         ? 'red'
         : annotateBadgeTasks.every(isAnnotateTaskCompleted)
@@ -279,8 +279,9 @@ export default function ProjectDetails() {
         : undefined
       : undefined;
 
-  const isReviewer = myProjectRole === 'reviewer' || myProjectRole === 'project_owner';
-  const reviewsBadge: BadgeVariant = isReviewer && pendingReviewCount > 0 ? 'red' : undefined;
+  const reviewsBadge: BadgeVariant = tasks.some((task) =>
+    canReviewTask(task) && getTaskLifecycleStatus(task) === 'submitted'
+  ) ? 'red' : undefined;
   const completedTasksBadge: BadgeVariant = approvedTaskCount > 0 ? 'green' : undefined;
 
   // ─── Tab config ─────────────────────────────────────────
@@ -414,10 +415,10 @@ export default function ProjectDetails() {
         <DatasetsTab datasets={datasets} projectId={projectId!} onRefresh={fetchAll} />
       )}
       {activeTab === 'tasks' && (
-        <TasksTab tasks={tasks} projectId={projectId!} canAnnotate={myProjectRole === 'annotator' || isAdmin} />
+        <TasksTab tasks={tasks} projectId={projectId!} currentUserId={user?.id} projectRole={myProjectRole} />
       )}
       {activeTab === 'reviews' && (
-        <ReviewsTab tasks={tasks} projectId={projectId!} canReview={isReviewer || isAdmin} />
+        <ReviewsTab tasks={tasks} projectId={projectId!} currentUserId={user?.id} projectRole={myProjectRole} />
       )}
       {activeTab === 'completed_tasks' && (
         <CompletedTasksTab tasks={tasks} projectId={projectId!} />
@@ -1275,7 +1276,17 @@ function DatasetSamplesModal({
 // ─────────────────────────────────────────────────────────────
 // TASKS TAB
 // ─────────────────────────────────────────────────────────────
-function TasksTab({ tasks, projectId, canAnnotate = true }: { tasks: Task[]; projectId: string; canAnnotate?: boolean }) {
+function TasksTab({
+  tasks,
+  projectId,
+  currentUserId,
+  projectRole,
+}: {
+  tasks: Task[];
+  projectId: string;
+  currentUserId?: string;
+  projectRole?: string;
+}) {
   if (tasks.length === 0) {
     return (
       <EmptyTab
@@ -1345,7 +1356,11 @@ function TasksTab({ tasks, projectId, canAnnotate = true }: { tasks: Task[]; pro
                   })}
                 </td>
                 <td className="px-5 py-3.5 text-right">
-                  <TaskActionButton task={task} projectId={projectId} canAnnotate={canAnnotate} />
+                  <TaskActionButton
+                    task={task}
+                    projectId={projectId}
+                    canAnnotate={projectRole === 'annotator' && task.assignee_id === currentUserId}
+                  />
                 </td>
               </tr>
             ))}
@@ -1356,7 +1371,7 @@ function TasksTab({ tasks, projectId, canAnnotate = true }: { tasks: Task[]; pro
   );
 }
 
-function TaskActionButton({ task, projectId, canAnnotate = true }: { task: Task; projectId: string; canAnnotate?: boolean }) {
+function TaskActionButton({ task, projectId, canAnnotate }: { task: Task; projectId: string; canAnnotate: boolean }) {
   if (isApprovedTask(task)) {
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-emerald-600 bg-emerald-50 border border-emerald-100">
@@ -1369,7 +1384,7 @@ function TaskActionButton({ task, projectId, canAnnotate = true }: { task: Task;
   if (getTaskLifecycleStatus(task) === 'submitted') {
     return (
       <Link
-        to={`/review/${projectId}/${task.id}`}
+        to={`/review/${projectId}/${task.id}?mode=view`}
         className="group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-purple-700 bg-purple-50 border border-purple-100 hover:bg-purple-100 hover:border-purple-200 transition-all duration-150"
       >
         <Eye className="w-3 h-3" />
@@ -1382,8 +1397,8 @@ function TaskActionButton({ task, projectId, canAnnotate = true }: { task: Task;
   if (!canAnnotate) {
     const workspacePath =
       (task.annotation_type ?? task.task_type) === 'relation_extraction'
-        ? `/workspace-relation/${task.id}`
-        : `/workspace/${task.id}`;
+        ? `/workspace-relation/${task.id}?projectId=${projectId}&mode=view`
+        : `/workspace/${task.id}?projectId=${projectId}&mode=view`;
     return (
       <Link
         to={workspacePath}
@@ -1423,7 +1438,17 @@ function TaskActionButton({ task, projectId, canAnnotate = true }: { task: Task;
 // ─────────────────────────────────────────────────────────────
 // REVIEWS TAB
 // ─────────────────────────────────────────────────────────────
-function ReviewsTab({ tasks, projectId, canReview = true }: { tasks: Task[]; projectId: string; canReview?: boolean }) {
+function ReviewsTab({
+  tasks,
+  projectId,
+  currentUserId,
+  projectRole,
+}: {
+  tasks: Task[];
+  projectId: string;
+  currentUserId?: string;
+  projectRole?: string;
+}) {
   const pendingTasks = tasks.filter((t) => getTaskLifecycleStatus(t) === 'submitted');
   const reworkTasks = tasks.filter((t) => getTaskLifecycleStatus(t) === 'rework');
 
@@ -1447,7 +1472,12 @@ function ReviewsTab({ tasks, projectId, canReview = true }: { tasks: Task[]; pro
             <h3 className="text-sm font-semibold text-surface-800">Chờ duyệt</h3>
             <span className="text-xs text-surface-400">{pendingTasks.length} task</span>
           </div>
-          <ReviewTaskTable tasks={pendingTasks} projectId={projectId} canReview={canReview} />
+          <ReviewTaskTable
+            tasks={pendingTasks}
+            projectId={projectId}
+            currentUserId={currentUserId}
+            projectRole={projectRole}
+          />
         </div>
       )}
 
@@ -1459,7 +1489,12 @@ function ReviewsTab({ tasks, projectId, canReview = true }: { tasks: Task[]; pro
             <h3 className="text-sm font-semibold text-surface-800">Đang sửa lại</h3>
             <span className="text-xs text-surface-400">{reworkTasks.length} task</span>
           </div>
-          <ReviewTaskTable tasks={reworkTasks} projectId={projectId} canReview={canReview} />
+          <ReviewTaskTable
+            tasks={reworkTasks}
+            projectId={projectId}
+            currentUserId={currentUserId}
+            projectRole={projectRole}
+          />
         </div>
       )}
     </div>
@@ -1491,7 +1526,17 @@ function CompletedTasksTab({ tasks, projectId }: { tasks: Task[]; projectId: str
   );
 }
 
-function ReviewTaskTable({ tasks, projectId, canReview = true }: { tasks: Task[]; projectId: string; canReview?: boolean }) {
+function ReviewTaskTable({
+  tasks,
+  projectId,
+  currentUserId,
+  projectRole,
+}: {
+  tasks: Task[];
+  projectId: string;
+  currentUserId?: string;
+  projectRole?: string;
+}) {
   return (
     <table className="w-full">
       <thead>
@@ -1506,7 +1551,13 @@ function ReviewTaskTable({ tasks, projectId, canReview = true }: { tasks: Task[]
         </tr>
       </thead>
       <tbody className="divide-y divide-surface-100">
-        {tasks.map((task) => (
+        {tasks.map((task) => {
+          const canReview =
+            projectRole === 'reviewer' &&
+            (!task.reviewer_id || task.reviewer_id === currentUserId);
+          const reviewPath = `/review/${projectId}/${task.id}${canReview ? '' : '?mode=view'}`;
+
+          return (
           <tr key={task.id} className="hover:bg-surface-50/50 transition-colors">
             <td className="px-5 py-3.5">
               <span className="text-xs font-mono text-surface-500 bg-surface-50 px-2 py-0.5 rounded">
@@ -1544,7 +1595,7 @@ function ReviewTaskTable({ tasks, projectId, canReview = true }: { tasks: Task[]
               {getTaskLifecycleStatus(task) === 'submitted' ? (
                 canReview ? (
                   <Link
-                    to={`/review/${projectId}/${task.id}`}
+                    to={reviewPath}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 transition-colors"
                   >
                     <Eye className="w-3 h-3" />
@@ -1552,7 +1603,7 @@ function ReviewTaskTable({ tasks, projectId, canReview = true }: { tasks: Task[]
                   </Link>
                 ) : (
                   <Link
-                    to={`/review/${projectId}/${task.id}`}
+                    to={reviewPath}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-surface-600 bg-surface-100 hover:bg-surface-200 transition-colors"
                   >
                     <Eye className="w-3 h-3" />
@@ -1561,7 +1612,7 @@ function ReviewTaskTable({ tasks, projectId, canReview = true }: { tasks: Task[]
                 )
               ) : isApprovedTask(task) ? (
                 <Link
-                  to={`/review/${projectId}/${task.id}`}
+                  to={reviewPath}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
                 >
                   <Eye className="w-3 h-3" />
@@ -1569,7 +1620,7 @@ function ReviewTaskTable({ tasks, projectId, canReview = true }: { tasks: Task[]
                 </Link>
               ) : (
                 <Link
-                  to={`/review/${projectId}/${task.id}`}
+                  to={reviewPath}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-orange-700 bg-orange-50 hover:bg-orange-100 transition-colors"
                 >
                   <Eye className="w-3 h-3" />
@@ -1578,7 +1629,8 @@ function ReviewTaskTable({ tasks, projectId, canReview = true }: { tasks: Task[]
               )}
             </td>
           </tr>
-        ))}
+          );
+        })}
       </tbody>
     </table>
   );

@@ -1,7 +1,7 @@
 // src/pages/RelationWorkspace.tsx
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, Link, useNavigate, useOutletContext } from 'react-router-dom';
+import { useParams, Link, useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   ChevronLeft,
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { annotationApi } from '../api/annotationApi';
 import { buildApiUrl } from '../api/apiConfig';
+import { useAuthStore } from '../store/authStore';
 import { useToast } from '../components/toastContext';
 import { useConfirm } from '../components/ConfirmDialog';
 import type {
@@ -410,9 +411,13 @@ function RelationArrows({
 
 export default function RelationWorkspace() {
   const { taskId } = useParams<{ taskId: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
+  const { user } = useAuthStore();
+  const projectIdParam = searchParams.get('projectId');
+  const explicitViewMode = searchParams.get('mode') === 'view';
 
   const { sidebarOpen } = useOutletContext<{ sidebarOpen: boolean }>();
 
@@ -510,16 +515,26 @@ export default function RelationWorkspace() {
     setLoading(true);
     setError('');
     try {
-      try { await annotationApi.startTask(taskId); } catch { /* already started */ }
-      const taskDetail = await fetchMyTask(taskId);
+      let taskDetail = projectIdParam
+        ? await annotationApi.getTask(projectIdParam, taskId).then((detail) => ({ ...detail, status: detail.task_status ?? detail.status }))
+        : await fetchMyTask(taskId);
       if (!taskDetail) {
-        setError('Không tìm thấy task này trong danh sách của bạn');
+        setError('Không tìm thấy task này hoặc bạn không có quyền xem task');
         return;
       }
-      setTask(taskDetail);
-      if (taskDetail.task_samples.length > 0) {
+      let loadedTask: TaskDetail = taskDetail;
+      const canEditLoadedTask = !explicitViewMode && loadedTask.assignee_id === user?.id;
+      if (canEditLoadedTask && loadedTask.status === 'todo') {
+        try {
+          await annotationApi.startTask(taskId);
+          loadedTask = await annotationApi.getTask(loadedTask.project_id, taskId)
+            .then((detail) => ({ ...detail, status: detail.task_status ?? detail.status }));
+        } catch { /* already started or not editable */ }
+      }
+      setTask(loadedTask);
+      if (loadedTask.task_samples.length > 0) {
         setCurrentSampleIndex(0);
-        await loadSample(taskId, taskDetail.task_samples[0]);
+        await loadSample(taskId, loadedTask.task_samples[0]);
       }
     } catch (err) {
       const e = err as { response?: { data?: { detail?: string } } };
@@ -527,7 +542,7 @@ export default function RelationWorkspace() {
     } finally {
       setLoading(false);
     }
-  }, [taskId, loadSample]);
+  }, [taskId, projectIdParam, explicitViewMode, user?.id, loadSample]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadTask(); }, 0);
@@ -542,8 +557,20 @@ export default function RelationWorkspace() {
     await loadSample(taskId, task.task_samples[clamped]);
   }, [task, taskId, loadSample]);
 
+  const samples: TaskSample[] = task?.task_samples ?? [];
+  const totalSamples = samples.length;
+  const currentSample = samples[currentSampleIndex];
+  const currentSampleStatus = currentSample?.status ?? 'pending';
+  const canEditTask = Boolean(task && user?.id && task.assignee_id === user.id && !explicitViewMode);
+  const isSubmitted = task?.status === 'submitted' || task?.status === 'approved';
+  const isReadOnly =
+    !canEditTask ||
+    isSubmitted ||
+    (task?.status === 'rework' && currentSampleStatus === 'approved');
+
   // ── Entity selection ────────────────────────────────────────
   const handleEntityClick = (ent: Entity) => {
+    if (isReadOnly) return;
     if (!selectedHead || (selectedHead && selectedTail)) {
       setSelectedHead(ent.id);
       setSelectedTail(null);
@@ -558,6 +585,7 @@ export default function RelationWorkspace() {
   const selectedRelLabel = relTypeOptions.find((l) => l.id === selectedRelLabelId);
 
   const handleAddRelation = () => {
+    if (isReadOnly) return;
     if (!selectedHead || !selectedTail || !selectedRelLabel) return;
     const entry = {
       id: editingRelId ?? `rel-${Date.now()}`,
@@ -579,6 +607,7 @@ export default function RelationWorkspace() {
   };
 
   const handleEditRelation = (rel: Relation) => {
+    if (isReadOnly) return;
     setSelectedHead(rel.headId);
     setSelectedTail(rel.tailId);
     setSelectedRelLabelId(rel.relLabelId);
@@ -586,6 +615,7 @@ export default function RelationWorkspace() {
   };
 
   const handleDeleteRelation = (relId: string) => {
+    if (isReadOnly) return;
     setRelations((prev) => prev.filter((r) => r.id !== relId));
     if (editingRelId === relId) {
       setEditingRelId(null);
@@ -596,7 +626,7 @@ export default function RelationWorkspace() {
   };
 
   const handleCreateEntity = useCallback(async (label: LabelOption) => {
-    if (!taskId || !task || !selection) return;
+    if (isReadOnly || !taskId || !task || !selection) return;
     const sample = task.task_samples[currentSampleIndex];
     if (!sample) return;
 
@@ -625,10 +655,10 @@ export default function RelationWorkspace() {
     } finally {
       setSaving(false);
     }
-  }, [taskId, task, currentSampleIndex, selection, entities, loadSample, showToast]);
+  }, [isReadOnly, taskId, task, currentSampleIndex, selection, entities, loadSample, showToast]);
 
   const handleEntityStepSave = useCallback(async (showMessage = true) => {
-    if (!taskId || !task || !sampleData) return;
+    if (isReadOnly || !taskId || !task || !sampleData) return;
     const sample = task.task_samples[currentSampleIndex];
     if (!sample) return;
 
@@ -648,11 +678,11 @@ export default function RelationWorkspace() {
     } finally {
       setSaving(false);
     }
-  }, [taskId, task, sampleData, currentSampleIndex, relations, showToast]);
+  }, [isReadOnly, taskId, task, sampleData, currentSampleIndex, relations, showToast]);
 
   // ── Save relation annotations for this sample ───────────────
   const handleSave = useCallback(async () => {
-    if (!taskId || !task || !sampleData) return;
+    if (isReadOnly || !taskId || !task || !sampleData) return;
     const sampleId = task.task_samples[currentSampleIndex]?.id;
     if (!sampleId) return;
     setSaving(true);
@@ -692,10 +722,10 @@ export default function RelationWorkspace() {
     } finally {
       setSaving(false);
     }
-  }, [taskId, task, sampleData, currentSampleIndex, relations, entities, relTypeOptions, loadSample, showToast]);
+  }, [isReadOnly, taskId, task, sampleData, currentSampleIndex, relations, entities, relTypeOptions, loadSample, showToast]);
 
   const handleClearLabels = useCallback(async () => {
-    if (!taskId || !task || !sampleData) return;
+    if (isReadOnly || !taskId || !task || !sampleData) return;
     const sample = task.task_samples[currentSampleIndex];
     if (!sample) return;
     if (sampleData.annotations.length === 0 && relations.length === 0) return;
@@ -729,11 +759,11 @@ export default function RelationWorkspace() {
     } finally {
       setSaving(false);
     }
-  }, [taskId, task, sampleData, currentSampleIndex, relations.length, loadSample, showToast]);
+  }, [isReadOnly, taskId, task, sampleData, currentSampleIndex, relations.length, loadSample, showToast]);
 
   // ── Mark sample done/undone ─────────────────────────────────
   const handleMarkDone = useCallback(async () => {
-    if (!taskId || !task) return;
+    if (isReadOnly || !taskId || !task) return;
     const sample = task.task_samples[currentSampleIndex];
     if (!sample) return;
     const newStatus: 'annotated' | 'done' = sample.status === 'done' ? 'annotated' : 'done';
@@ -764,11 +794,11 @@ export default function RelationWorkspace() {
     } finally {
       setDoneLoading(false);
     }
-  }, [taskId, task, currentSampleIndex, workspaceStep, handleEntityStepSave, handleSave, showToast]);
+  }, [isReadOnly, taskId, task, currentSampleIndex, workspaceStep, handleEntityStepSave, handleSave, showToast]);
 
   // ── Submit task ─────────────────────────────────────────────
   const handleSubmit = async () => {
-    if (!taskId) return;
+    if (isReadOnly || !taskId) return;
     if (!await confirm('Nộp task này để review?', { title: 'Nộp task', confirmText: 'Nộp' })) return;
     setSubmitLoading(true);
     try {
@@ -813,8 +843,6 @@ export default function RelationWorkspace() {
     );
   }
 
-  const samples: TaskSample[] = task.task_samples;
-  const totalSamples = samples.length;
   const doneCount = samples.filter((s) => isSampleProcessed(s.status)).length;
   const sampleNumber = Number(sampleNumberQuery.trim());
   const hasSampleNumber = sampleNumberQuery.trim() !== '';
@@ -861,14 +889,25 @@ export default function RelationWorkspace() {
             />
           </div>
         </div>
-        <button
-          onClick={handleSubmit}
-          disabled={submitLoading || saving}
-          className="btn-primary flex items-center justify-center gap-1.5 text-sm"
-        >
-          {submitLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          Nộp task
-        </button>
+        {canEditTask && !isSubmitted ? (
+          <button
+            onClick={handleSubmit}
+            disabled={submitLoading || saving}
+            className="btn-primary flex items-center justify-center gap-1.5 text-sm"
+          >
+            {submitLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            Nộp task
+          </button>
+        ) : (
+          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${
+            isSubmitted
+              ? 'bg-emerald-50 text-emerald-700'
+              : 'bg-surface-100 text-surface-600'
+          }`}>
+            <CheckCircle2 className="w-4 h-4" />
+            {isSubmitted ? 'Đã nộp' : 'Chỉ xem'}
+          </div>
+        )}
       </div>
 
       {/* ── Main 3-panel layout ──────────────────────────────── */}
@@ -972,7 +1011,7 @@ export default function RelationWorkspace() {
                           setSelectedRelLabelId('');
                           setEditingRelId(null);
                         }}
-                        disabled={saving}
+                        disabled={saving || isReadOnly}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-200 text-surface-600 hover:bg-surface-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                       >
                         <ChevronLeft className="w-3.5 h-3.5" />
@@ -982,7 +1021,7 @@ export default function RelationWorkspace() {
                     {workspaceStep === 'entities' && (
                       <button
                         onClick={() => void handleEntityStepSave()}
-                        disabled={saving}
+                        disabled={saving || isReadOnly}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-200 text-surface-600 hover:bg-surface-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                       >
                         {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
@@ -1027,9 +1066,9 @@ export default function RelationWorkspace() {
                     selectedHead={selectedHead}
                     selectedTail={selectedTail}
                     onEntityClick={handleEntityClick}
-                    onSelectionChange={workspaceStep === 'entities' ? setSelection : undefined}
+                    onSelectionChange={workspaceStep === 'entities' && !isReadOnly ? setSelection : undefined}
                     entityRefs={entityRefs}
-                    relationMode={workspaceStep === 'relations'}
+                    relationMode={workspaceStep === 'relations' && !isReadOnly}
                   />
                 </div>
 
@@ -1050,9 +1089,9 @@ export default function RelationWorkspace() {
                           <button
                             key={ent.id}
                             onClick={() => {
-                              if (workspaceStep === 'relations') handleEntityClick(ent);
+                              if (workspaceStep === 'relations' && !isReadOnly) handleEntityClick(ent);
                             }}
-                            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${workspaceStep === 'relations' ? 'cursor-pointer' : 'cursor-default'}`}
+                            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${workspaceStep === 'relations' && !isReadOnly ? 'cursor-pointer' : 'cursor-default'}`}
                             style={{
                               backgroundColor: `rgba(${rgb}, 0.15)`,
                               color: ent.color,
@@ -1096,7 +1135,7 @@ export default function RelationWorkspace() {
 
                 <button
                   onClick={() => void handleClearLabels()}
-                  disabled={!canClearLabels || saving}
+                  disabled={!canClearLabels || saving || isReadOnly}
                   className="flex shrink-0 items-center justify-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg border border-surface-200 text-sm font-medium text-surface-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -1105,7 +1144,7 @@ export default function RelationWorkspace() {
 
                 <button
                   onClick={handleMarkDone}
-                  disabled={!canMarkDone || doneLoading}
+                  disabled={!canMarkDone || doneLoading || isReadOnly}
                   className={`flex shrink-0 items-center justify-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg border text-sm font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
                     isDone
                       ? 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-400'
@@ -1164,7 +1203,7 @@ export default function RelationWorkspace() {
                         <button
                           key={opt.id}
                           onClick={() => void handleCreateEntity(opt)}
-                          disabled={!selection || saving}
+                          disabled={!selection || saving || isReadOnly}
                           className="px-2.5 py-1 rounded-lg text-xs font-semibold transition-all border disabled:opacity-40 disabled:cursor-not-allowed"
                           style={selection && !saving
                             ? { backgroundColor: opt.color, borderColor: opt.color, color: 'white' }
@@ -1238,7 +1277,11 @@ export default function RelationWorkspace() {
                     )}
                   </div>
                   {entity && (
-                    <button onClick={clear} className="text-surface-400 hover:text-surface-700 shrink-0">
+                    <button
+                      onClick={clear}
+                      disabled={isReadOnly}
+                      className="text-surface-400 hover:text-surface-700 shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
                       <X className="w-3.5 h-3.5" />
                     </button>
                   )}
@@ -1259,11 +1302,12 @@ export default function RelationWorkspace() {
                     <button
                       key={opt.id}
                       onClick={() => setSelectedRelLabelId(opt.id)}
+                      disabled={isReadOnly}
                       className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all border ${
                         selectedRelLabelId === opt.id
                           ? 'text-white border-transparent'
                           : 'bg-white border-surface-200 text-surface-600 hover:border-surface-300'
-                      }`}
+                      } disabled:opacity-40 disabled:cursor-not-allowed`}
                       style={selectedRelLabelId === opt.id ? { backgroundColor: opt.color, borderColor: opt.color } : {}}
                     >
                       {opt.name}
@@ -1276,10 +1320,10 @@ export default function RelationWorkspace() {
             {/* Add / update button */}
             <button
               onClick={handleAddRelation}
-              disabled={!selectedHead || !selectedTail || !selectedRelLabelId}
+              disabled={!selectedHead || !selectedTail || !selectedRelLabelId || isReadOnly}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               style={
-                selectedHead && selectedTail && selectedRelLabelId
+                selectedHead && selectedTail && selectedRelLabelId && !isReadOnly
                   ? { backgroundColor: '#10B981', color: 'white' }
                   : { backgroundColor: '#f1f5f9', color: '#94a3b8' }
               }
@@ -1327,13 +1371,15 @@ export default function RelationWorkspace() {
                             <div className="flex items-center gap-1 shrink-0">
                               <button
                                 onClick={() => handleEditRelation(rel)}
-                                className="p-1 rounded text-surface-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+                                disabled={isReadOnly}
+                                className="p-1 rounded text-surface-400 hover:text-brand-600 hover:bg-brand-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                               >
                                 <Edit2 className="w-3 h-3" />
                               </button>
                               <button
                                 onClick={() => handleDeleteRelation(rel.id)}
-                                className="p-1 rounded text-surface-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                disabled={isReadOnly}
+                                className="p-1 rounded text-surface-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                               >
                                 <Trash2 className="w-3 h-3" />
                               </button>

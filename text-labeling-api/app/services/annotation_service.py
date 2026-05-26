@@ -120,7 +120,7 @@ class AnnotationService:
     async def get_sample(
         self, task_id: UUID, task_sample_id: UUID, current_user: User
     ) -> dict:
-        task = await self._get_my_task(task_id, current_user)
+        task = await self._get_task_for_view(task_id, current_user)
         ts = await self._get_task_sample(task_sample_id, task.id)
 
         # Load annotations
@@ -132,10 +132,11 @@ class AnnotationService:
         )
         annotations = ann_result.scalars().all()
 
-        if annotations and ts.status == TaskSampleStatus.PENDING:
+        can_edit = task.assignee_id == current_user.id
+        if can_edit and annotations and ts.status == TaskSampleStatus.PENDING:
             ts.status = TaskSampleStatus.ANNOTATED
             await self.db.flush()
-        elif not annotations and ts.status == TaskSampleStatus.ANNOTATED:
+        elif can_edit and not annotations and ts.status == TaskSampleStatus.ANNOTATED:
             ts.status = TaskSampleStatus.PENDING
             await self.db.flush()
 
@@ -188,7 +189,7 @@ class AnnotationService:
         self, task_id: UUID, task_sample_id: UUID, current_user: User
     ) -> List[dict]:
         """Load NER entities for the same underlying data sample."""
-        task = await self._get_my_task(task_id, current_user)
+        task = await self._get_task_for_view(task_id, current_user)
         ts = await self._get_task_sample(task_sample_id, task.id)
 
         result = await self.db.execute(
@@ -565,7 +566,7 @@ class AnnotationService:
     async def get_adjacent(
         self, task_id: UUID, task_sample_id: UUID, current_user: User
     ) -> dict:
-        task = await self._get_my_task(task_id, current_user)
+        task = await self._get_task_for_view(task_id, current_user)
         ts = await self._get_task_sample(task_sample_id, task.id)
 
         sorted_samples = sorted(task.task_samples, key=lambda s: s.sample_order)
@@ -645,9 +646,7 @@ class AnnotationService:
                 select(ProjectMember.user_id).where(
                     and_(
                         ProjectMember.project_id == task.project_id,
-                        ProjectMember.role_in_project.in_(
-                            [ProjectRole.REVIEWER, ProjectRole.PROJECT_OWNER]
-                        ),
+                        ProjectMember.role_in_project == ProjectRole.REVIEWER,
                     )
                 )
             )
@@ -674,7 +673,7 @@ class AnnotationService:
                 actor_name=actor_name,
             )
 
-    async def _get_my_task(self, task_id: UUID, user: User) -> Task:
+    async def _load_task_with_samples(self, task_id: UUID) -> Task:
         result = await self.db.execute(
             select(Task)
             .options(
@@ -687,27 +686,34 @@ class AnnotationService:
         task = result.scalar_one_or_none()
         if not task:
             raise NotFoundException(f"Task '{task_id}' not found")
+        return task
 
-        # Allow assignee, reviewer (for viewing), or admin
+    async def _get_task_for_view(self, task_id: UUID, user: User) -> Task:
+        task = await self._load_task_with_samples(task_id)
         if (
-            task.assignee_id != user.id
-            and RoleName.ADMIN.value not in user.role_names
+            task.assignee_id == user.id
+            or task.reviewer_id == user.id
+            or RoleName.ADMIN.value in user.role_names
         ):
-            # Check if user is a reviewer in this project
-            member_result = await self.db.execute(
-                select(ProjectMember).where(
-                    and_(
-                        ProjectMember.project_id == task.project_id,
-                        ProjectMember.user_id == user.id,
-                        ProjectMember.role_in_project.in_(
-                            [ProjectRole.REVIEWER, ProjectRole.PROJECT_OWNER]
-                        ),
-                    )
+            return task
+
+        member_result = await self.db.execute(
+            select(ProjectMember).where(
+                and_(
+                    ProjectMember.project_id == task.project_id,
+                    ProjectMember.user_id == user.id,
                 )
             )
-            if not member_result.scalar_one_or_none():
-                raise ForbiddenException("You don't have access to this task")
+        )
+        if not member_result.scalar_one_or_none():
+            raise ForbiddenException("You don't have access to this task")
 
+        return task
+
+    async def _get_my_task(self, task_id: UUID, user: User) -> Task:
+        task = await self._load_task_with_samples(task_id)
+        if task.assignee_id != user.id:
+            raise ForbiddenException("Only the assigned annotator can modify this task")
         return task
 
     async def _get_task_sample(

@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { useParams, Link, useNavigate, useOutletContext } from 'react-router-dom';
+import { useParams, Link, useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   ChevronLeft,
@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { annotationApi } from '../api/annotationApi';
 import { buildApiUrl } from '../api/apiConfig';
+import { useAuthStore } from '../store/authStore';
 import { useToast } from '../components/toastContext';
 import { useConfirm } from '../components/ConfirmDialog';
 import type {
@@ -281,10 +282,14 @@ function BottomBar({
 // ============================================================
 export default function Workspace() {
   const { taskId } = useParams<{ taskId: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
   const { sidebarOpen } = useOutletContext<{ sidebarOpen: boolean }>();
+  const { user } = useAuthStore();
+  const projectIdParam = searchParams.get('projectId');
+  const explicitViewMode = searchParams.get('mode') === 'view';
 
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [sampleData, setSampleData] = useState<AnnotationSampleResponse | null>(null);
@@ -335,33 +340,44 @@ export default function Workspace() {
     setLoading(true);
     setError('');
     try {
-      try { await annotationApi.startTask(taskId); } catch { /* already started */ }
-
-      const myTasks = await fetchMyTaskInfo(taskId);
-      if (!myTasks) {
-        setError('Không tìm thấy nhiệm vụ trong danh sách của bạn');
+      let taskDetail = projectIdParam
+        ? await annotationApi.getTask(projectIdParam, taskId).then((detail) => ({ ...detail, status: detail.task_status ?? detail.status }))
+        : await fetchMyTaskInfo(taskId);
+      if (!taskDetail) {
+        setError('Không tìm thấy nhiệm vụ hoặc bạn không có quyền xem task này');
         setLoading(false);
         return;
       }
-      setTask(myTasks);
 
-      if (myTasks.status === 'rework') {
+      let loadedTask: TaskDetail = taskDetail;
+      const canEditLoadedTask = !explicitViewMode && loadedTask.assignee_id === user?.id;
+      if (canEditLoadedTask && loadedTask.status === 'todo') {
+        try {
+          await annotationApi.startTask(taskId);
+          loadedTask = await annotationApi.getTask(loadedTask.project_id, taskId)
+            .then((detail) => ({ ...detail, status: detail.task_status ?? detail.status }));
+        } catch { /* already started or not editable */ }
+      }
+
+      setTask(loadedTask);
+
+      if (loadedTask.status === 'rework') {
         try {
           const fb = await annotationApi.getRejectionFeedback(taskId);
           setRejectionFeedback(fb.feedback);
         } catch { /* optional */ }
       }
 
-      if (myTasks.task_samples.length > 0) {
+      if (loadedTask.task_samples.length > 0) {
         let startIndex = 0;
-        if (myTasks.status === 'rework') {
-          const firstRejected = myTasks.task_samples.findIndex(
+        if (loadedTask.status === 'rework') {
+          const firstRejected = loadedTask.task_samples.findIndex(
             (s) => s.status === 'rejected' || s.status === 'rework'
           );
           if (firstRejected !== -1) startIndex = firstRejected;
         }
         setCurrentSampleIndex(startIndex);
-        await loadSample(taskId, myTasks.task_samples[startIndex].id);
+        await loadSample(taskId, loadedTask.task_samples[startIndex].id);
       }
     } catch (err: unknown) {
       const e = err as { response?: { data?: { detail?: string } } };
@@ -369,7 +385,7 @@ export default function Workspace() {
     } finally {
       setLoading(false);
     }
-  }, [taskId, fetchMyTaskInfo, loadSample]);
+  }, [taskId, projectIdParam, explicitViewMode, user?.id, fetchMyTaskInfo, loadSample]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadTask(); }, 0);
@@ -384,9 +400,19 @@ export default function Workspace() {
     await loadSample(taskId, sampleId);
   }, [taskId, loadSample]);
 
+  const samples = task?.task_samples || [];
+  const currentSample = samples[currentSampleIndex];
+  const currentSampleStatus = currentSample?.status || 'pending';
+  const canEditTask = Boolean(task && user?.id && task.assignee_id === user.id && !explicitViewMode);
+  const isSubmitted = task?.status === 'submitted' || task?.status === 'approved';
+  const isReadOnly =
+    !canEditTask ||
+    isSubmitted ||
+    (task?.status === 'rework' && currentSampleStatus === 'approved');
+
   // ── Annotation handlers ─────────────────────────────────────
   const handleCreateAnnotation = useCallback(async (label: LabelOption) => {
-    if (!selection || !taskId || !task) return;
+    if (isReadOnly || !selection || !taskId || !task) return;
     const sampleId = task.task_samples[currentSampleIndex]?.id;
     if (!sampleId) return;
     setSaving(true);
@@ -405,10 +431,10 @@ export default function Workspace() {
     } finally {
       setSaving(false);
     }
-  }, [selection, taskId, task, currentSampleIndex, loadSample, showToast]);
+  }, [isReadOnly, selection, taskId, task, currentSampleIndex, loadSample, showToast]);
 
   const handleToggleClassificationLabel = useCallback(async (label: LabelOption) => {
-    if (!sampleData || !taskId || !task) return;
+    if (isReadOnly || !sampleData || !taskId || !task) return;
     if (!sampleData.content.length) { showToast('error', 'Mẫu văn bản rỗng.'); return; }
     const sampleId = task.task_samples[currentSampleIndex]?.id;
     if (!sampleId) return;
@@ -446,10 +472,10 @@ export default function Workspace() {
     } finally {
       setSaving(false);
     }
-  }, [sampleData, taskId, task, currentSampleIndex, isSingleLabel, loadSample, showToast]);
+  }, [isReadOnly, sampleData, taskId, task, currentSampleIndex, isSingleLabel, loadSample, showToast]);
 
   const handleDeleteAnnotation = useCallback(async (annotationId: string) => {
-    if (!taskId || !task) return;
+    if (isReadOnly || !taskId || !task) return;
     const sampleId = task.task_samples[currentSampleIndex]?.id;
     if (!sampleId) return;
     try {
@@ -459,10 +485,10 @@ export default function Workspace() {
       const e = err as { response?: { data?: { detail?: string } } };
       showToast('error', e.response?.data?.detail || 'Không thể xóa annotation');
     }
-  }, [taskId, task, currentSampleIndex, loadSample, showToast]);
+  }, [isReadOnly, taskId, task, currentSampleIndex, loadSample, showToast]);
 
   const handleClearAnnotations = useCallback(async () => {
-    if (!taskId || !task || !sampleData) return;
+    if (isReadOnly || !taskId || !task || !sampleData) return;
     const sampleId = task.task_samples[currentSampleIndex]?.id;
     if (!sampleId || sampleData.annotations.length === 0) return;
     try {
@@ -475,10 +501,10 @@ export default function Workspace() {
       const e = err as { response?: { data?: { detail?: string } } };
       showToast('error', e.response?.data?.detail || 'Xoá nhãn thất bại');
     }
-  }, [taskId, task, sampleData, currentSampleIndex, loadSample, showToast]);
+  }, [isReadOnly, taskId, task, sampleData, currentSampleIndex, loadSample, showToast]);
 
   const handleSubmit = useCallback(async () => {
-    if (!taskId) return;
+    if (isReadOnly || !taskId) return;
     if (!await confirm(
       'Bạn có muốn nộp toàn bộ task này để kiểm duyệt? Sau khi nộp, bạn sẽ không thể chỉnh sửa thêm.',
       { title: 'Nộp toàn bộ task', variant: 'warning', confirmText: 'Nộp' }
@@ -498,10 +524,10 @@ export default function Workspace() {
     } finally {
       setSubmitLoading(false);
     }
-  }, [taskId, task, navigate, showToast, confirm]);
+  }, [isReadOnly, taskId, task, navigate, showToast, confirm]);
 
   const handleMarkDone = useCallback(async () => {
-    if (!taskId || !task) return;
+    if (isReadOnly || !taskId || !task) return;
     const sample = task.task_samples[currentSampleIndex];
     if (!sample) return;
     const newStatus: 'annotated' | 'done' = sample.status === 'done' ? 'annotated' : 'done';
@@ -525,11 +551,11 @@ export default function Workspace() {
     } finally {
       setDoneLoading(false);
     }
-  }, [taskId, task, currentSampleIndex, showToast]);
+  }, [isReadOnly, taskId, task, currentSampleIndex, showToast]);
 
   // ── Keyboard shortcuts ──────────────────────────────────────
   useEffect(() => {
-    if (!sampleData) return;
+    if (!sampleData || isReadOnly) return;
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       const label = sampleData.labels.find(
@@ -545,7 +571,7 @@ export default function Workspace() {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [sampleData, selection, task?.annotation_type, handleCreateAnnotation, handleToggleClassificationLabel]);
+  }, [sampleData, isReadOnly, selection, task?.annotation_type, handleCreateAnnotation, handleToggleClassificationLabel]);
 
   // ── Loading / error states ──────────────────────────────────
   if (loading) {
@@ -567,11 +593,6 @@ export default function Workspace() {
     );
   }
 
-  const samples = task?.task_samples || [];
-  const currentSample = samples[currentSampleIndex];
-  const currentSampleStatus = currentSample?.status || 'pending';
-  const isSubmitted = task?.status === 'submitted' || task?.status === 'approved';
-  const isReadOnly = isSubmitted || (task?.status === 'rework' && currentSampleStatus === 'approved');
   const isClassification = task?.annotation_type === 'text_classification';
 
   const currentRejectionFeedback = currentSample ? rejectionFeedback[currentSample.id] : undefined;
@@ -605,7 +626,7 @@ export default function Workspace() {
       </div>
       <div className="flex items-center gap-2 justify-end">
         <TaskStatusBadge status={task?.status || 'todo'} />
-        {!isSubmitted ? (
+        {canEditTask && !isSubmitted ? (
           <button
             onClick={handleSubmit}
             disabled={submitLoading}
@@ -615,8 +636,12 @@ export default function Workspace() {
             Submit
           </button>
         ) : (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-medium">
-            <CheckCircle2 className="w-4 h-4" />Đã nộp
+          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${
+            isSubmitted
+              ? 'bg-emerald-50 text-emerald-700'
+              : 'bg-surface-100 text-surface-600'
+          }`}>
+            <CheckCircle2 className="w-4 h-4" />{isSubmitted ? 'Đã nộp' : 'Chỉ xem'}
           </div>
         )}
       </div>
@@ -742,7 +767,8 @@ export default function Workspace() {
                 </div>
                 <button
                   onClick={() => setIsSingleLabel((v) => !v)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-surface-200 text-xs font-medium text-surface-600 hover:bg-surface-50 transition-colors"
+                  disabled={isReadOnly}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-surface-200 text-xs font-medium text-surface-600 hover:bg-surface-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   title={isSingleLabel ? 'Chọn 1 nhãn' : 'Chọn nhiều nhãn'}
                 >
                   {isSingleLabel ? <ToggleLeft className="w-4 h-4 text-amber-500" /> : <ToggleRight className="w-4 h-4 text-brand-500" />}
