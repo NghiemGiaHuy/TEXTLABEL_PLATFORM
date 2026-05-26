@@ -1545,6 +1545,7 @@ function ReviewsTab({
           </div>
           <ReviewTaskTable
             tasks={pendingTasks}
+            allTasks={tasks}
             projectId={projectId}
             currentUserId={currentUserId}
             projectRole={projectRole}
@@ -1563,6 +1564,7 @@ function ReviewsTab({
           </div>
           <ReviewTaskTable
             tasks={reworkTasks}
+            allTasks={tasks}
             projectId={projectId}
             currentUserId={currentUserId}
             projectRole={projectRole}
@@ -1601,19 +1603,27 @@ function CompletedTasksTab({ tasks, projectId }: { tasks: Task[]; projectId: str
 
 function ReviewTaskTable({
   tasks,
+  allTasks = tasks,
   projectId,
   currentUserId,
   projectRole,
   groupRows = false,
 }: {
   tasks: Task[];
+  allTasks?: Task[];
   projectId: string;
   currentUserId?: string;
   projectRole?: string;
   groupRows?: boolean;
 }) {
+  const fullGroupsByKey = new Map(
+    getTaskAssignmentGroups(allTasks).map((group) => [group.key, group])
+  );
   const taskGroups = groupRows
-    ? getTaskAssignmentGroups(tasks)
+    ? getTaskAssignmentGroups(tasks).map((group) => ({
+        ...group,
+        primaryTask: fullGroupsByKey.get(group.key)?.primaryTask ?? group.primaryTask,
+      }))
     : tasks.map((task) => ({ key: task.id, tasks: [task], primaryTask: task }));
 
   return (
