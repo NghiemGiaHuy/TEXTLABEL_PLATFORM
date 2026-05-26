@@ -1297,6 +1297,37 @@ function TasksTab({
     );
   }
 
+  const getTasksTabGroupKey = (task: Task) => [
+    task.dataset_id,
+    task.assignment_method,
+    task.assigned_by,
+    task.annotation_type ?? task.task_type ?? '',
+    task.label_set_id ?? '',
+  ].join('|');
+
+  const sortTasksByAssignment = (items: Task[]) =>
+    [...items].sort((a, b) => {
+      const byAssignedAt = (a.assigned_at ?? '').localeCompare(b.assigned_at ?? '');
+      return byAssignedAt || a.id.localeCompare(b.id);
+    });
+
+  const taskGroups = Array.from(
+    sortTasksByAssignment(tasks).reduce<Map<string, Task[]>>((groups, task) => {
+      const key = getTasksTabGroupKey(task);
+      const groupTasks = groups.get(key) ?? [];
+      groupTasks.push(task);
+      groups.set(key, groupTasks);
+      return groups;
+    }, new Map())
+  ).reduce<Array<{ key: string; tasks: Task[]; primaryTask: Task }>>((groups, [key, groupTasks]) => {
+    const sortedTasks = sortTasksByAssignment(groupTasks);
+    const primaryTask = sortedTasks[0];
+    if (!primaryTask) return groups;
+
+    groups.push({ key, tasks: sortedTasks, primaryTask });
+    return groups;
+  }, []);
+
   return (
     <div className="bg-surface-0 rounded-xl border border-surface-200 shadow-subtle overflow-hidden">
       <div className="overflow-x-auto">
@@ -1313,57 +1344,80 @@ function TasksTab({
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-100">
-            {tasks.map((task) => (
-              <tr key={task.id} className="hover:bg-surface-50/50 transition-colors">
-                <td className="px-5 py-3.5">
-                  <span className="text-xs font-mono text-surface-500 bg-surface-50 px-2 py-0.5 rounded">
-                    {task.id.slice(0, 8)}…
-                  </span>
-                </td>
-                <td className="px-5 py-3.5">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[10px] font-bold shrink-0">
-                      {task.assignee_name
-                        ?.split(' ')
-                        .map((n) => n[0])
-                        .join('')
-                        .slice(0, 2)
-                        .toUpperCase() || '??'}
-                    </div>
-                    <span className="text-sm text-surface-800">
-                      {task.assignee_name || 'Unknown'}
+            {taskGroups.map((group) => {
+              const task = group.primaryTask;
+              const actionTask =
+                projectRole === 'annotator'
+                  ? group.tasks.find((item) => item.assignee_id === currentUserId) ?? task
+                  : task;
+              return (
+                <tr key={group.key} className="hover:bg-surface-50/50 transition-colors">
+                  <td className="px-5 py-3.5 align-middle">
+                    <span className="text-xs font-mono text-surface-500 bg-surface-50 px-2 py-0.5 rounded">
+                      {task.id.slice(0, 8)}…
                     </span>
-                  </div>
-                </td>
-                <td className="px-5 py-3.5 text-sm text-surface-600 font-medium">
-                  {task.sample_count}
-                </td>
-                <td className="px-5 py-3.5">
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded ${
-                    task.assignment_method === 'round_robin'
-                      ? 'bg-purple-50 text-purple-700'
-                      : 'bg-surface-100 text-surface-600'
-                  }`}>
-                    {task.assignment_method === 'round_robin' ? 'Round Robin' : 'Manual'}
-                  </span>
-                </td>
-                <td className="px-5 py-3.5">
-                  <StatusBadge status={getTaskLifecycleStatus(task)} />
-                </td>
-                <td className="px-5 py-3.5 text-sm text-surface-500">
-                  {new Date(task.assigned_at).toLocaleDateString('en-US', {
-                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-                  })}
-                </td>
-                <td className="px-5 py-3.5 text-right">
-                  <TaskActionButton
-                    task={task}
-                    projectId={projectId}
-                    canAnnotate={projectRole === 'annotator' && task.assignee_id === currentUserId}
-                  />
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <div className="flex flex-col gap-3">
+                      {group.tasks.map((item) => (
+                        <div key={item.id} className="flex min-h-[56px] items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+                            {item.assignee_name
+                              ?.split(' ')
+                              .map((n) => n[0])
+                              .join('')
+                              .slice(0, 2)
+                              .toUpperCase() || '??'}
+                          </div>
+                          <span className="text-sm text-surface-800">
+                            {item.assignee_name || 'Unknown'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-5 py-3.5 text-sm text-surface-600 font-medium">
+                    <div className="flex flex-col gap-3">
+                      {group.tasks.map((item) => (
+                        <div key={item.id} className="flex min-h-[56px] items-center">
+                          {item.sample_count}
+                        </div>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-5 py-3.5 align-middle">
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded ${
+                      task.assignment_method === 'round_robin'
+                        ? 'bg-purple-50 text-purple-700'
+                        : 'bg-surface-100 text-surface-600'
+                    }`}>
+                      {task.assignment_method === 'round_robin' ? 'Round Robin' : 'Manual'}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <div className="flex flex-col gap-3">
+                      {group.tasks.map((item) => (
+                        <div key={item.id} className="flex min-h-[56px] items-center">
+                          <StatusBadge status={getTaskLifecycleStatus(item)} />
+                        </div>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-5 py-3.5 text-sm text-surface-500 align-middle">
+                    {new Date(task.assigned_at).toLocaleDateString('en-US', {
+                      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                    })}
+                  </td>
+                  <td className="px-5 py-3.5 text-right align-middle">
+                    <TaskActionButton
+                      task={actionTask}
+                      projectId={projectId}
+                      canAnnotate={projectRole === 'annotator' && actionTask.assignee_id === currentUserId}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
