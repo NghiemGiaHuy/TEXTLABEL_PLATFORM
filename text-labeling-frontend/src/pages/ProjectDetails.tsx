@@ -2484,11 +2484,8 @@ function AssignTab({
     const firstTask = sortedTasks[0];
     if (!firstTask) return;
 
-    const isGroup = sortedTasks.length > 1;
     const ok = await confirm(
-      isGroup
-        ? `Xóa ${sortedTasks.length} task trong nhóm phân công này?`
-        : `Xóa task phân công cho ${firstTask.assignee_name ?? 'annotator'}?`,
+      'Xóa task phân công này?',
       {
         title: 'Xóa phân công',
         confirmText: 'Xóa',
@@ -2501,7 +2498,7 @@ function AssignTab({
     setDeletingId(firstTask.id);
     try {
       await Promise.all(sortedTasks.map((task) => taskApi.deleteTask(projectId, task.id)));
-      showToast('success', isGroup ? 'Đã xóa nhóm phân công' : 'Đã xóa phân công');
+      showToast('success', 'Đã xóa phân công');
       onAssigned();
     } catch (err) {
       showToast('error', extractErrorMessage(err, 'Xóa phân công thất bại'));
@@ -2522,8 +2519,6 @@ function AssignTab({
     key: string;
     tasks: Task[];
     primaryTask: Task;
-    totalSamples: number;
-    statusKeys: string[];
   }>>((groups, [key, groupTasks]) => {
     const sortedTasks = sortAssignmentTasks(groupTasks);
     const primaryTask = sortedTasks[0];
@@ -2533,8 +2528,6 @@ function AssignTab({
       key,
       tasks: sortedTasks,
       primaryTask,
-      totalSamples: sortedTasks.reduce((sum, task) => sum + (task.sample_count || 0), 0),
-      statusKeys: orderedUniqueIds(sortedTasks.map((task) => getTaskLifecycleStatus(task))),
     });
     return groups;
   }, []);
@@ -2574,7 +2567,7 @@ function AssignTab({
           <div className="px-5 py-3.5 border-b border-surface-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-surface-800">Danh sách phân công</h3>
-              <span className="text-xs text-surface-400">{assignmentGroups.length} phân công / {tasks.length} task</span>
+              <span className="text-xs text-surface-400">{assignmentGroups.length} task</span>
             </div>
             <button
               onClick={() => setShowModal(true)}
@@ -2591,7 +2584,6 @@ function AssignTab({
               <thead>
                 <tr className="border-b border-surface-100">
                   <Th>Task</Th>
-                  <Th>Task ID</Th>
                   <Th>Người phụ trách</Th>
                   <Th>Samples</Th>
                   <Th>Trạng thái</Th>
@@ -2607,7 +2599,7 @@ function AssignTab({
                   return (
                     <tr key={group.key} className="hover:bg-surface-50/50 transition-colors">
                       {/* Task */}
-                      <td className="px-5 py-4 min-w-[240px]">
+                      <td className="px-5 py-4 min-w-[240px] align-middle">
                         <div className="flex flex-col gap-1.5">
                           {at ? (
                             <span className={`inline-flex w-fit items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${at.bg} ${at.text}`}>
@@ -2622,27 +2614,19 @@ function AssignTab({
                           <p className="text-sm text-surface-700 truncate max-w-[280px]">
                             {getDatasetName(task.dataset_id)}
                           </p>
-                        </div>
-                      </td>
-                      {/* Task IDs */}
-                      <td className="px-5 py-4 min-w-[180px]">
-                        <div className="flex flex-wrap gap-1.5">
-                          {group.tasks.map((item) => (
-                            <span
-                              key={item.id}
-                              title={item.id}
-                              className="inline-flex items-center rounded-md bg-surface-50 px-2 py-1 font-mono text-[11px] text-surface-600"
-                            >
-                              {item.id.slice(0, 8)}...
-                            </span>
-                          ))}
+                          <span
+                            title={task.id}
+                            className="w-fit rounded-md bg-surface-50 px-2 py-0.5 font-mono text-[11px] text-surface-500"
+                          >
+                            ID: {task.id.slice(0, 8)}...
+                          </span>
                         </div>
                       </td>
                       {/* People */}
                       <td className="px-5 py-4 min-w-[280px]">
                         <div className="flex flex-col gap-3">
                           {group.tasks.map((item) => (
-                            <div key={item.id} className="flex flex-col gap-2">
+                            <div key={item.id} className="flex min-h-[64px] flex-col justify-center gap-2">
                               <div className="flex items-center gap-2">
                                 <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[10px] font-bold shrink-0">
                                   {(item.assignee_name ?? '?').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
@@ -2661,19 +2645,27 @@ function AssignTab({
                       </td>
                       {/* Samples */}
                       <td className="px-5 py-4">
-                        <span className="text-sm font-semibold text-surface-800">{group.totalSamples}</span>
-                        <span className="ml-1 text-xs text-surface-400">mẫu</span>
+                        <div className="flex flex-col gap-3">
+                          {group.tasks.map((item) => (
+                            <div key={item.id} className="flex min-h-[64px] items-center">
+                              <span className="text-sm font-semibold text-surface-800">{item.sample_count}</span>
+                              <span className="ml-1 text-xs text-surface-400">mẫu</span>
+                            </div>
+                          ))}
+                        </div>
                       </td>
                       {/* Status */}
                       <td className="px-5 py-4">
-                        <div className="flex flex-wrap gap-1.5">
-                          {group.statusKeys.map((status) => (
-                            <StatusBadge key={status} status={status} />
+                        <div className="flex flex-col gap-3">
+                          {group.tasks.map((item) => (
+                            <div key={item.id} className="flex min-h-[64px] items-center">
+                              <StatusBadge status={getTaskLifecycleStatus(item)} />
+                            </div>
                           ))}
                         </div>
                       </td>
                       {/* Actions */}
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4 align-middle">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             type="button"
