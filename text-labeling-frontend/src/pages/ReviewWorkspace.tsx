@@ -317,7 +317,7 @@ function ReviewSampleListPanel({
       .map((sample, index) => ({ sample, index }))
       .filter(({ sample, index: i }) => {
         const newlyFixed = sample.status === 'submitted' && !!rejectionMap[sample.id];
-        const displayNumber = sample.sample_order ?? (i + 1);
+        const displayNumber = i + 1;
         const numberMatches = !hasSampleNumber
           || (Number.isInteger(sampleNumber) && sampleNumber > 0 && sampleNumber === displayNumber);
         const statusMatches = statusFilter === 'all'
@@ -376,7 +376,7 @@ function ReviewSampleListPanel({
                 <div className="flex items-center gap-1.5 min-w-0">
                   <Hash className="w-3 h-3 text-surface-400 shrink-0" />
                   <span className={`text-xs font-semibold ${isActive ? 'text-brand-700' : 'text-surface-600'}`}>
-                    Sample {s.sample_order ?? (i + 1)}
+                    Sample {i + 1}
                   </span>
                 </div>
                 <span className={`inline-flex items-center gap-1 px-1.5 py-px rounded-full text-[10px] font-medium shrink-0 ${cfg.bg} ${cfg.text}`}>

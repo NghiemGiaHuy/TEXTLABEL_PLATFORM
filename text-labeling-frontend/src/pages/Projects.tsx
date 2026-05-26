@@ -1372,7 +1372,7 @@ function CreateProjectModal({
           <label className={labelCls}>Mục tiêu</label>
           <input
             type="text"
-            placeholder="VD: Huấn luyện mô hình phân loại hình ảnh"
+            placeholder="VD: Gán nhãn thực thể và phân loại văn bản"
             value={objective}
             onChange={(e) => setObjective(e.target.value)}
             className={inputCls}

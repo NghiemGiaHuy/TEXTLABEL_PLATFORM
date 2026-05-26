@@ -2319,6 +2319,14 @@ function AssignTab({
   const getAnnotationLabel = (task: Task) =>
     ANNOTATION_LABEL[getTaskAnnotationType(task)]?.label ?? getTaskAnnotationType(task);
 
+  const getAssignmentGroupKey = (task: Task) => [
+    task.dataset_id,
+    task.assignment_method,
+    task.assigned_by,
+    getTaskAnnotationType(task),
+    task.label_set_id ?? '',
+  ].join('|');
+
   const sortAssignmentTasks = (items: Task[]) =>
     [...items].sort((a, b) => {
       const byAssignedAt = (a.assigned_at ?? '').localeCompare(b.assigned_at ?? '');
@@ -2326,16 +2334,9 @@ function AssignTab({
     });
 
   const getAssignmentTasks = (sourceTask: Task) => {
-    const sourceType = getTaskAnnotationType(sourceTask);
-    const sourceLabelSetId = sourceTask.label_set_id ?? '';
+    const sourceKey = getAssignmentGroupKey(sourceTask);
     return sortAssignmentTasks(
-      tasks.filter((task) =>
-        task.dataset_id === sourceTask.dataset_id &&
-        task.assignment_method === sourceTask.assignment_method &&
-        task.assigned_by === sourceTask.assigned_by &&
-        getTaskAnnotationType(task) === sourceType &&
-        (task.label_set_id ?? '') === sourceLabelSetId
-      )
+      tasks.filter((task) => getAssignmentGroupKey(task) === sourceKey)
     );
   };
 
@@ -2478,9 +2479,16 @@ function AssignTab({
     }
   };
 
-  const deleteTask = async (task: Task) => {
+  const deleteAssignmentTasks = async (assignmentTasks: Task[]) => {
+    const sortedTasks = sortAssignmentTasks(assignmentTasks);
+    const firstTask = sortedTasks[0];
+    if (!firstTask) return;
+
+    const isGroup = sortedTasks.length > 1;
     const ok = await confirm(
-      `Xóa task phân công cho ${task.assignee_name ?? 'annotator'}?`,
+      isGroup
+        ? `Xóa ${sortedTasks.length} task trong nhóm phân công này?`
+        : `Xóa task phân công cho ${firstTask.assignee_name ?? 'annotator'}?`,
       {
         title: 'Xóa phân công',
         confirmText: 'Xóa',
@@ -2490,10 +2498,10 @@ function AssignTab({
     );
     if (!ok) return;
 
-    setDeletingId(task.id);
+    setDeletingId(firstTask.id);
     try {
-      await taskApi.deleteTask(projectId, task.id);
-      showToast('success', 'Đã xóa phân công');
+      await Promise.all(sortedTasks.map((task) => taskApi.deleteTask(projectId, task.id)));
+      showToast('success', isGroup ? 'Đã xóa nhóm phân công' : 'Đã xóa phân công');
       onAssigned();
     } catch (err) {
       showToast('error', extractErrorMessage(err, 'Xóa phân công thất bại'));
@@ -2501,6 +2509,35 @@ function AssignTab({
       setDeletingId(null);
     }
   };
+
+  const assignmentGroups = Array.from(
+    sortAssignmentTasks(tasks).reduce<Map<string, Task[]>>((groups, task) => {
+      const key = getAssignmentGroupKey(task);
+      const groupTasks = groups.get(key) ?? [];
+      groupTasks.push(task);
+      groups.set(key, groupTasks);
+      return groups;
+    }, new Map())
+  ).reduce<Array<{
+    key: string;
+    tasks: Task[];
+    primaryTask: Task;
+    totalSamples: number;
+    statusKeys: string[];
+  }>>((groups, [key, groupTasks]) => {
+    const sortedTasks = sortAssignmentTasks(groupTasks);
+    const primaryTask = sortedTasks[0];
+    if (!primaryTask) return groups;
+
+    groups.push({
+      key,
+      tasks: sortedTasks,
+      primaryTask,
+      totalSamples: sortedTasks.reduce((sum, task) => sum + (task.sample_count || 0), 0),
+      statusKeys: orderedUniqueIds(sortedTasks.map((task) => getTaskLifecycleStatus(task))),
+    });
+    return groups;
+  }, []);
 
   return (
     <>
@@ -2537,7 +2574,7 @@ function AssignTab({
           <div className="px-5 py-3.5 border-b border-surface-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-surface-800">Danh sách phân công</h3>
-              <span className="text-xs text-surface-400">{tasks.length} task</span>
+              <span className="text-xs text-surface-400">{assignmentGroups.length} phân công / {tasks.length} task</span>
             </div>
             <button
               onClick={() => setShowModal(true)}
@@ -2554,6 +2591,7 @@ function AssignTab({
               <thead>
                 <tr className="border-b border-surface-100">
                   <Th>Task</Th>
+                  <Th>Task ID</Th>
                   <Th>Người phụ trách</Th>
                   <Th>Samples</Th>
                   <Th>Trạng thái</Th>
@@ -2561,16 +2599,19 @@ function AssignTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-100">
-                {tasks.map((task) => {
-                  const at = task.annotation_type ? ANNOTATION_LABEL[task.annotation_type] : null;
+                {assignmentGroups.map((group) => {
+                  const task = group.primaryTask;
+                  const at = ANNOTATION_LABEL[getTaskAnnotationType(task)] ?? null;
+                  const canEditGroup = group.tasks.every(canEditAssignment);
+                  const canDeleteGroup = group.tasks.every(isNotStartedAssignment);
                   return (
-                    <tr key={task.id} className="hover:bg-surface-50/50 transition-colors">
+                    <tr key={group.key} className="hover:bg-surface-50/50 transition-colors">
                       {/* Task */}
                       <td className="px-5 py-4 min-w-[240px]">
                         <div className="flex flex-col gap-1.5">
                           {at ? (
                             <span className={`inline-flex w-fit items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${at.bg} ${at.text}`}>
-                              {task.annotation_type === 'sequence_labeling'
+                              {getTaskAnnotationType(task) === 'sequence_labeling'
                                 ? <Tag className="w-3 h-3" />
                                 : <BadgeCheck className="w-3 h-3" />}
                               {at.label}
@@ -2583,30 +2624,54 @@ function AssignTab({
                           </p>
                         </div>
                       </td>
+                      {/* Task IDs */}
+                      <td className="px-5 py-4 min-w-[180px]">
+                        <div className="flex flex-wrap gap-1.5">
+                          {group.tasks.map((item) => (
+                            <span
+                              key={item.id}
+                              title={item.id}
+                              className="inline-flex items-center rounded-md bg-surface-50 px-2 py-1 font-mono text-[11px] text-surface-600"
+                            >
+                              {item.id.slice(0, 8)}...
+                            </span>
+                          ))}
+                        </div>
+                      </td>
                       {/* People */}
-                      <td className="px-5 py-4 min-w-[220px]">
-                        <div className="flex flex-col gap-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[10px] font-bold shrink-0">
-                              {(task.assignee_name ?? '?').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                      <td className="px-5 py-4 min-w-[280px]">
+                        <div className="flex flex-col gap-3">
+                          {group.tasks.map((item) => (
+                            <div key={item.id} className="flex flex-col gap-2">
+                              <div className="flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+                                  {(item.assignee_name ?? '?').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-surface-800 truncate">{item.assignee_name ?? 'Unknown'}</p>
+                                  <p className="text-[11px] text-surface-400">Annotator</p>
+                                </div>
+                              </div>
+                              <div className="pl-9 text-xs text-surface-500">
+                                Review: <span className="font-medium text-surface-700">{item.reviewer_name ?? 'Bất kỳ reviewer'}</span>
+                              </div>
                             </div>
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-surface-800 truncate">{task.assignee_name ?? 'Unknown'}</p>
-                              <p className="text-[11px] text-surface-400">Annotator</p>
-                            </div>
-                          </div>
-                          <div className="pl-9 text-xs text-surface-500">
-                            Review: <span className="font-medium text-surface-700">{task.reviewer_name ?? 'Bất kỳ reviewer'}</span>
-                          </div>
+                          ))}
                         </div>
                       </td>
                       {/* Samples */}
                       <td className="px-5 py-4">
-                        <span className="text-sm font-semibold text-surface-800">{task.sample_count}</span>
+                        <span className="text-sm font-semibold text-surface-800">{group.totalSamples}</span>
                         <span className="ml-1 text-xs text-surface-400">mẫu</span>
                       </td>
                       {/* Status */}
-                      <td className="px-5 py-4"><StatusBadge status={getTaskLifecycleStatus(task)} /></td>
+                      <td className="px-5 py-4">
+                        <div className="flex flex-wrap gap-1.5">
+                          {group.statusKeys.map((status) => (
+                            <StatusBadge key={status} status={status} />
+                          ))}
+                        </div>
+                      </td>
                       {/* Actions */}
                       <td className="px-5 py-4">
                         <div className="flex items-center justify-end gap-1.5">
@@ -2622,8 +2687,8 @@ function AssignTab({
                           <button
                             type="button"
                             onClick={() => startEdit(task)}
-                            disabled={!canEditAssignment(task)}
-                            title={!canEditAssignment(task) ? 'Chỉ sửa được phân công Chưa làm hoặc Đang làm' : 'Sửa phân công'}
+                            disabled={!canEditGroup}
+                            title={!canEditGroup ? 'Chỉ sửa được phân công Chưa làm hoặc Đang làm' : 'Sửa phân công'}
                             aria-label="Sửa phân công"
                             className="p-2 rounded-lg text-surface-500 hover:text-amber-600 hover:bg-amber-50 disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-surface-500 transition-colors cursor-pointer"
                           >
@@ -2631,9 +2696,9 @@ function AssignTab({
                           </button>
                           <button
                             type="button"
-                            onClick={() => deleteTask(task)}
-                            disabled={!isNotStartedAssignment(task) || deletingId === task.id}
-                            title={isNotStartedAssignment(task) ? 'Xóa phân công' : 'Chỉ xóa được phân công Chưa làm'}
+                            onClick={() => deleteAssignmentTasks(group.tasks)}
+                            disabled={!canDeleteGroup || deletingId === task.id}
+                            title={canDeleteGroup ? 'Xóa phân công' : 'Chỉ xóa được phân công Chưa làm'}
                             aria-label="Xóa phân công"
                             className="p-2 rounded-lg text-surface-500 hover:text-red-600 hover:bg-red-50 disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-surface-500 transition-colors cursor-pointer"
                           >
