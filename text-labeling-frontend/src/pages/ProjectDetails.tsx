@@ -1518,12 +1518,12 @@ function ReviewsTab({
   currentUserId?: string;
   projectRole?: string;
 }) {
-  const pendingTasks = tasks.filter((t) => getTaskLifecycleStatus(t) === 'submitted');
-  const reworkTasks = tasks.filter((t) => getTaskLifecycleStatus(t) === 'rework');
-  const pendingTaskGroups = getTaskAssignmentGroups(pendingTasks);
-  const reworkTaskGroups = getTaskAssignmentGroups(reworkTasks);
+  const reviewTasks = tasks.filter((t) =>
+    ['submitted', 'rework'].includes(getTaskLifecycleStatus(t))
+  );
+  const reviewTaskGroups = getTaskAssignmentGroups(reviewTasks);
 
-  if (pendingTasks.length === 0 && reworkTasks.length === 0) {
+  if (reviewTasks.length === 0) {
     return (
       <EmptyTab
         icon={Eye}
@@ -1534,44 +1534,21 @@ function ReviewsTab({
   }
 
   return (
-    <div className="space-y-4">
-      {/* Pending review */}
-      {pendingTasks.length > 0 && (
-        <div className="bg-surface-0 rounded-xl border border-surface-200 shadow-subtle overflow-hidden">
-          <div className="px-5 py-3 border-b border-surface-100 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-purple-500" />
-            <h3 className="text-sm font-semibold text-surface-800">Chờ duyệt</h3>
-            <span className="text-xs text-surface-400">{pendingTaskGroups.length} task</span>
-          </div>
-          <ReviewTaskTable
-            tasks={pendingTasks}
-            allTasks={tasks}
-            projectId={projectId}
-            currentUserId={currentUserId}
-            projectRole={projectRole}
-            groupRows
-          />
-        </div>
-      )}
-
-      {/* Rework */}
-      {reworkTasks.length > 0 && (
-        <div className="bg-surface-0 rounded-xl border border-surface-200 shadow-subtle overflow-hidden">
-          <div className="px-5 py-3 border-b border-surface-100 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-orange-500" />
-            <h3 className="text-sm font-semibold text-surface-800">Đang sửa lại</h3>
-            <span className="text-xs text-surface-400">{reworkTaskGroups.length} task</span>
-          </div>
-          <ReviewTaskTable
-            tasks={reworkTasks}
-            allTasks={tasks}
-            projectId={projectId}
-            currentUserId={currentUserId}
-            projectRole={projectRole}
-            groupRows
-          />
-        </div>
-      )}
+    <div className="bg-surface-0 rounded-xl border border-surface-200 shadow-subtle overflow-hidden">
+      <div className="px-5 py-3 border-b border-surface-100 flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-purple-500" />
+        <h3 className="text-sm font-semibold text-surface-800">Danh sách review</h3>
+        <span className="text-xs text-surface-400">{reviewTaskGroups.length} task</span>
+      </div>
+      <ReviewTaskTable
+        tasks={reviewTasks}
+        allTasks={tasks}
+        projectId={projectId}
+        currentUserId={currentUserId}
+        projectRole={projectRole}
+        groupRows
+        showMethod
+      />
     </div>
   );
 }
@@ -1608,6 +1585,7 @@ function ReviewTaskTable({
   currentUserId,
   projectRole,
   groupRows = false,
+  showMethod = false,
 }: {
   tasks: Task[];
   allTasks?: Task[];
@@ -1615,6 +1593,7 @@ function ReviewTaskTable({
   currentUserId?: string;
   projectRole?: string;
   groupRows?: boolean;
+  showMethod?: boolean;
 }) {
   const fullGroupsByKey = new Map(
     getTaskAssignmentGroups(allTasks).map((group) => [group.key, group])
@@ -1631,9 +1610,10 @@ function ReviewTaskTable({
       <thead>
         <tr className="border-b border-surface-100">
           <Th>Task ID</Th>
-          <Th>Tên task</Th>
+          {!showMethod && <Th>Tên task</Th>}
           <Th>Annotator</Th>
           <Th>Samples</Th>
+          {showMethod && <Th>Method</Th>}
           <Th>Status</Th>
           <Th>Submitted</Th>
           <Th align="right">Actions</Th>
@@ -1650,11 +1630,13 @@ function ReviewTaskTable({
                 {task.id.slice(0, 8)}…
               </span>
             </td>
-            <td className="px-5 py-3.5 max-w-[160px] align-middle">
-              <span className="text-sm text-surface-800 truncate block" title={task.dataset_name ?? ''}>
-                {task.dataset_name || '—'}
-              </span>
-            </td>
+            {!showMethod && (
+              <td className="px-5 py-3.5 max-w-[160px] align-middle">
+                <span className="text-sm text-surface-800 truncate block" title={task.dataset_name ?? ''}>
+                  {task.dataset_name || '—'}
+                </span>
+              </td>
+            )}
             <td className="px-5 py-3.5">
               <div className="flex flex-col gap-3">
                 {group.tasks.map((item) => (
@@ -1677,6 +1659,17 @@ function ReviewTaskTable({
                 ))}
               </div>
             </td>
+            {showMethod && (
+              <td className="px-5 py-3.5 align-middle">
+                <span className={`text-xs font-medium px-2 py-0.5 rounded ${
+                  task.assignment_method === 'round_robin'
+                    ? 'bg-purple-50 text-purple-700'
+                    : 'bg-surface-100 text-surface-600'
+                }`}>
+                  {task.assignment_method === 'round_robin' ? 'Round Robin' : 'Manual'}
+                </span>
+              </td>
+            )}
             <td className="px-5 py-3.5">
               <div className="flex flex-col gap-3">
                 {group.tasks.map((item) => (
