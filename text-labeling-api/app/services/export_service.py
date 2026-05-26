@@ -25,7 +25,7 @@ from app.models.export import Export, ExportFilterStatus, ExportFormat
 from app.models.notification import NotificationType
 from app.models.project import Project, ProjectRole
 from app.models.review import Review
-from app.models.task import Task, TaskSample, TaskSampleStatus
+from app.models.task import Task, TaskSample, TaskSampleStatus, TaskStatus
 from app.models.user import RoleName, User
 from app.services.notification_service import create_notification
 
@@ -232,9 +232,13 @@ class ExportService:
             query = query.where(Task.dataset_id == dataset_id)
 
         if filter_status == ExportFilterStatus.APPROVED_ONLY:
-            query = query.where(
-                TaskSample.status == TaskSampleStatus.APPROVED
+            approved_task_ids = await self._get_fully_approved_assignment_task_ids(
+                project_id=project_id,
+                dataset_id=dataset_id,
             )
+            if not approved_task_ids:
+                return []
+            query = query.where(Task.id.in_(approved_task_ids))
 
         result = await self.db.execute(query.order_by(TaskSample.sample_order))
         task_samples = result.scalars().unique().all()
@@ -276,6 +280,50 @@ class ExportService:
             export_data.append(item)
 
         return export_data
+
+    async def _get_fully_approved_assignment_task_ids(
+        self,
+        project_id: UUID,
+        dataset_id: Optional[UUID] = None,
+    ) -> set[UUID]:
+        query = (
+            select(Task)
+            .options(selectinload(Task.task_samples))
+            .where(Task.project_id == project_id)
+        )
+        if dataset_id:
+            query = query.where(Task.dataset_id == dataset_id)
+
+        result = await self.db.execute(query)
+        assignment_groups = {}
+        for task in result.scalars().unique().all():
+            key = (
+                task.dataset_id,
+                task.assignment_method,
+                task.assigned_by,
+                task.annotation_type,
+                task.label_set_id,
+            )
+            assignment_groups.setdefault(key, []).append(task)
+
+        approved_task_ids: set[UUID] = set()
+        for group_tasks in assignment_groups.values():
+            group_samples = [
+                task_sample
+                for task in group_tasks
+                for task_sample in task.task_samples
+            ]
+            if (
+                group_samples
+                and all(task.status == TaskStatus.APPROVED for task in group_tasks)
+                and all(
+                    task_sample.status == TaskSampleStatus.APPROVED
+                    for task_sample in group_samples
+                )
+            ):
+                approved_task_ids.update(task.id for task in group_tasks)
+
+        return approved_task_ids
 
     # ================================================================
     # File Generation
