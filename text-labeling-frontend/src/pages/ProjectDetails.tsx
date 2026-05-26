@@ -1555,6 +1555,7 @@ function ReviewsTab({
 
 function CompletedTasksTab({ tasks, projectId }: { tasks: Task[]; projectId: string }) {
   const approvedTasks = tasks.filter(isApprovedTask);
+  const approvedTaskGroups = getTaskAssignmentGroups(approvedTasks);
 
   if (approvedTasks.length === 0) {
     return (
@@ -1571,9 +1572,15 @@ function CompletedTasksTab({ tasks, projectId }: { tasks: Task[]; projectId: str
       <div className="px-5 py-3 border-b border-surface-100 flex items-center gap-2">
         <span className="w-2 h-2 rounded-full bg-emerald-500" />
         <h3 className="text-sm font-semibold text-surface-800">Task đã duyệt hết</h3>
-        <span className="text-xs text-surface-400">{approvedTasks.length} task</span>
+        <span className="text-xs text-surface-400">{approvedTaskGroups.length} task</span>
       </div>
-      <ReviewTaskTable tasks={approvedTasks} projectId={projectId} />
+      <ReviewTaskTable
+        tasks={approvedTasks}
+        allTasks={tasks}
+        projectId={projectId}
+        groupRows
+        showMethod
+      />
     </div>
   );
 }
