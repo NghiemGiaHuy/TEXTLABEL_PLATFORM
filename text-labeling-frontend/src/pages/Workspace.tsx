@@ -290,6 +290,7 @@ export default function Workspace() {
   const { user } = useAuthStore();
   const projectIdParam = searchParams.get('projectId');
   const explicitViewMode = searchParams.get('mode') === 'view';
+  const isAdmin = user?.roles?.some((role) => role.toLowerCase().includes('admin')) ?? false;
 
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [sampleData, setSampleData] = useState<AnnotationSampleResponse | null>(null);
@@ -350,7 +351,7 @@ export default function Workspace() {
       }
 
       let loadedTask: TaskDetail = taskDetail;
-      const canEditLoadedTask = !explicitViewMode && loadedTask.assignee_id === user?.id;
+      const canEditLoadedTask = !explicitViewMode && (loadedTask.assignee_id === user?.id || isAdmin);
       if (canEditLoadedTask && loadedTask.status === 'todo') {
         try {
           await annotationApi.startTask(taskId);
@@ -385,7 +386,7 @@ export default function Workspace() {
     } finally {
       setLoading(false);
     }
-  }, [taskId, projectIdParam, explicitViewMode, user?.id, fetchMyTaskInfo, loadSample]);
+  }, [taskId, projectIdParam, explicitViewMode, user?.id, isAdmin, fetchMyTaskInfo, loadSample]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadTask(); }, 0);
@@ -403,7 +404,12 @@ export default function Workspace() {
   const samples = task?.task_samples || [];
   const currentSample = samples[currentSampleIndex];
   const currentSampleStatus = currentSample?.status || 'pending';
-  const canEditTask = Boolean(task && user?.id && task.assignee_id === user.id && !explicitViewMode);
+  const canEditTask = Boolean(
+    task &&
+    user?.id &&
+    !explicitViewMode &&
+    (task.assignee_id === user.id || isAdmin)
+  );
   const isSubmitted = task?.status === 'submitted' || task?.status === 'approved';
   const isReadOnly =
     !canEditTask ||

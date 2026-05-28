@@ -603,6 +603,8 @@ class ReviewService:
         self, task_id: UUID, user: User
     ) -> Task:
         task = await self._load_task_with_samples(task_id)
+        if RoleName.ADMIN.value in user.role_names:
+            return task
         if task.reviewer_id and task.reviewer_id == user.id:
             return task
 

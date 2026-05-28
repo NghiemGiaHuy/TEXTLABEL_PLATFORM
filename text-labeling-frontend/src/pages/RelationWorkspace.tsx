@@ -485,6 +485,7 @@ export default function RelationWorkspace() {
   const { user } = useAuthStore();
   const projectIdParam = searchParams.get('projectId');
   const explicitViewMode = searchParams.get('mode') === 'view';
+  const isAdmin = user?.roles?.some((role) => role.toLowerCase().includes('admin')) ?? false;
 
   const { sidebarOpen } = useOutletContext<{ sidebarOpen: boolean }>();
 
@@ -598,7 +599,7 @@ export default function RelationWorkspace() {
         return;
       }
       let loadedTask: TaskDetail = taskDetail;
-      const canEditLoadedTask = !explicitViewMode && loadedTask.assignee_id === user?.id;
+      const canEditLoadedTask = !explicitViewMode && (loadedTask.assignee_id === user?.id || isAdmin);
       if (canEditLoadedTask && loadedTask.status === 'todo') {
         try {
           await annotationApi.startTask(taskId);
@@ -617,7 +618,7 @@ export default function RelationWorkspace() {
     } finally {
       setLoading(false);
     }
-  }, [taskId, projectIdParam, explicitViewMode, user?.id, loadSample]);
+  }, [taskId, projectIdParam, explicitViewMode, user?.id, isAdmin, loadSample]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadTask(); }, 0);
@@ -636,7 +637,12 @@ export default function RelationWorkspace() {
   const totalSamples = samples.length;
   const currentSample = samples[currentSampleIndex];
   const currentSampleStatus = currentSample?.status ?? 'pending';
-  const canEditTask = Boolean(task && user?.id && task.assignee_id === user.id && !explicitViewMode);
+  const canEditTask = Boolean(
+    task &&
+    user?.id &&
+    !explicitViewMode &&
+    (task.assignee_id === user.id || isAdmin)
+  );
   const isSubmitted = task?.status === 'submitted' || task?.status === 'approved';
   const isReadOnly =
     !canEditTask ||

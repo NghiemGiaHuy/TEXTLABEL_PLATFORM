@@ -524,6 +524,7 @@ export default function ReviewWorkspace() {
   const { showToast } = useToast();
   const { user } = useAuthStore();
   const explicitViewMode = searchParams.get('mode') === 'view';
+  const isAdmin = user?.roles?.some((role) => role.toLowerCase().includes('admin')) ?? false;
 
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [currentSampleIndex, setCurrentSampleIndex] = useState(0);
@@ -614,8 +615,9 @@ export default function ReviewWorkspace() {
     task &&
     user?.id &&
     !explicitViewMode &&
-    projectRole === 'reviewer' &&
-    (!task.reviewer_id || task.reviewer_id === user.id)
+    (isAdmin ||
+      (projectRole === 'reviewer' &&
+        (!task.reviewer_id || task.reviewer_id === user.id)))
   );
 
   // ─── Approve ────────────────────────────────────────────

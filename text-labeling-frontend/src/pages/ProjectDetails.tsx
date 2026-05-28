@@ -64,6 +64,10 @@ function extractErrorMessage(err: unknown, fallback = 'Có lỗi xảy ra'): str
   return fallback;
 }
 
+function hasAdminRole(user?: { roles?: string[] } | null): boolean {
+  return user?.roles?.some((role) => role.toLowerCase().includes('admin')) ?? false;
+}
+
 // ─── Status badge (reused) ──────────────────────────────────
 const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string; label: string }> = {
   not_started: { bg: 'bg-surface-100', text: 'text-surface-600', dot: 'bg-surface-400', label: 'Chưa làm' },
@@ -324,11 +328,12 @@ export default function ProjectDetails() {
   const myProjectRole = user
     ? members.find((m) => m.user_id === user.id)?.role_in_project
     : undefined;
+  const isAdmin = hasAdminRole(user);
 
   const canAnnotateTask = (task: Task) =>
-    myProjectRole === 'annotator' && task.assignee_id === user?.id;
+    isAdmin || (myProjectRole === 'annotator' && task.assignee_id === user?.id);
   const canReviewTask = (task: Task) =>
-    myProjectRole === 'reviewer' && (!task.reviewer_id || task.reviewer_id === user?.id);
+    isAdmin || (myProjectRole === 'reviewer' && (!task.reviewer_id || task.reviewer_id === user?.id));
 
   const annotateBadgeTasks = tasks.filter(canAnnotateTask);
   const tasksBadge: BadgeVariant =
@@ -476,10 +481,10 @@ export default function ProjectDetails() {
         <DatasetsTab datasets={datasets} projectId={projectId!} onRefresh={fetchAll} />
       )}
       {activeTab === 'tasks' && (
-        <TasksTab tasks={tasks} projectId={projectId!} currentUserId={user?.id} projectRole={myProjectRole} />
+        <TasksTab tasks={tasks} projectId={projectId!} currentUserId={user?.id} projectRole={myProjectRole} isAdmin={isAdmin} />
       )}
       {activeTab === 'reviews' && (
-        <ReviewsTab tasks={tasks} projectId={projectId!} currentUserId={user?.id} projectRole={myProjectRole} />
+        <ReviewsTab tasks={tasks} projectId={projectId!} currentUserId={user?.id} projectRole={myProjectRole} isAdmin={isAdmin} />
       )}
       {activeTab === 'completed_tasks' && (
         <CompletedTasksTab tasks={tasks} projectId={projectId!} />
@@ -576,14 +581,11 @@ function OverviewTab({
   onSwitchTab: (tab: TabKey) => void;
 }) {
   const [infoMember, setInfoMember] = useState<ProjectMember | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const [pendingRole, setPendingRole] = useState<string>('');
   const [showAddMember, setShowAddMember] = useState(false);
   const { confirm, ConfirmDialog } = useConfirm();
   const { showToast } = useToast();
   const { user } = useAuthStore();
-  const isAdmin = user?.roles?.some((r: string) => r.toLowerCase().includes('admin'));
+  const isAdmin = hasAdminRole(user);
   const isProjectOwner =
     project.created_by === user?.id ||
     members.some(
@@ -600,30 +602,6 @@ function OverviewTab({
       onRefresh();
     } catch (err: unknown) {
       showToast('error', extractErrorMessage(err, 'Không thể xoá thành viên'));
-    }
-  };
-
-  const startEdit = (m: ProjectMember) => {
-    setEditingId(m.user_id);
-    setPendingRole(m.role_in_project);
-  };
-
-  const cancelEdit = () => {
-    setEditingId(null);
-    setPendingRole('');
-  };
-
-  const saveRole = async (m: ProjectMember) => {
-    if (pendingRole === m.role_in_project) { cancelEdit(); return; }
-    setSavingId(m.user_id);
-    try {
-      await taskApi.updateMember(projectId, m.user_id, pendingRole);
-      onRefresh();
-      setEditingId(null);
-    } catch (err: unknown) {
-      showToast('error', extractErrorMessage(err, 'Không thể đổi vai trò'));
-    } finally {
-      setSavingId(null);
     }
   };
 
@@ -796,8 +774,6 @@ function OverviewTab({
             </thead>
             <tbody className="divide-y divide-surface-100">
               {members.map((m) => {
-                const isEditing = editingId === m.user_id;
-                const isSaving = savingId === m.user_id;
                 return (
                 <tr key={m.id} className="hover:bg-surface-50/50 transition-colors">
                   <td className="px-5 py-3.5">
@@ -810,49 +786,15 @@ function OverviewTab({
                   </td>
                   <td className="px-5 py-3.5 text-sm text-surface-500">{m.email}</td>
                   <td className="px-5 py-3.5">
-                    {isEditing ? (
-                      <div className="relative inline-block">
-                        <select
-                          value={pendingRole}
-                          onChange={(e) => setPendingRole(e.target.value)}
-                          className="appearance-none text-xs font-semibold border rounded-md px-2 py-1 pr-6 outline-none focus:ring-2 focus:ring-brand-300 bg-white"
-                          autoFocus
-                        >
-                          {ROLE_OPTIONS.map((r) => (
-                            <option key={r.value} value={r.value}>{r.label}</option>
-                          ))}
-                        </select>
-                        <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-surface-400 pointer-events-none" />
-                      </div>
-                    ) : (
-                      <span className={`text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md border ${ROLE_COLORS[m.role_in_project] || 'bg-surface-100 text-surface-600 border-surface-200'}`}>
-                        {ROLE_LABELS[m.role_in_project] || m.role_in_project}
-                      </span>
-                    )}
+                    <span className={`text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md border ${ROLE_COLORS[m.role_in_project] || 'bg-surface-100 text-surface-600 border-surface-200'}`}>
+                      {ROLE_LABELS[m.role_in_project] || m.role_in_project}
+                    </span>
                   </td>
                   <td className="px-5 py-3.5 text-sm text-surface-500">
                     {new Date(m.joined_at).toLocaleDateString('vi-VN', { day: 'numeric', month: 'short', year: 'numeric' })}
                   </td>
                   <td className="px-5 py-3.5">
-                    {isEditing ? (
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => saveRole(m)}
-                          disabled={isSaving}
-                          className="px-2.5 py-1 rounded-lg text-xs font-medium text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 transition-colors cursor-pointer"
-                        >
-                          {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Lưu'}
-                        </button>
-                        <button
-                          onClick={cancelEdit}
-                          disabled={isSaving}
-                          className="px-2.5 py-1 rounded-lg text-xs font-medium text-surface-600 bg-surface-100 hover:bg-surface-200 transition-colors cursor-pointer"
-                        >
-                          Hủy
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-end gap-1">
+                    <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => setInfoMember(m)}
                           className="p-1.5 rounded-lg text-surface-400 hover:text-brand-600 hover:bg-brand-50 transition-colors cursor-pointer"
@@ -860,15 +802,6 @@ function OverviewTab({
                         >
                           <Info className="w-4 h-4" />
                         </button>
-                        {isAdmin && (
-                          <button
-                            onClick={() => startEdit(m)}
-                            className="p-1.5 rounded-lg text-surface-400 hover:text-amber-600 hover:bg-amber-50 transition-colors cursor-pointer"
-                            title="Đổi vai trò"
-                          >
-                            <ChevronDown className="w-4 h-4" />
-                          </button>
-                        )}
                         <button
                           onClick={() => handleRemoveMember(m)}
                           className="p-1.5 rounded-lg text-surface-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
@@ -877,7 +810,6 @@ function OverviewTab({
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
-                    )}
                   </td>
                 </tr>
                 );
@@ -1342,11 +1274,13 @@ function TasksTab({
   projectId,
   currentUserId,
   projectRole,
+  isAdmin,
 }: {
   tasks: Task[];
   projectId: string;
   currentUserId?: string;
   projectRole?: string;
+  isAdmin: boolean;
 }) {
   if (tasks.length === 0) {
     return (
@@ -1443,7 +1377,7 @@ function TasksTab({
                           <TaskActionButton
                             task={item}
                             projectId={projectId}
-                            canAnnotate={projectRole === 'annotator' && item.assignee_id === currentUserId}
+                            canAnnotate={isAdmin || (projectRole === 'annotator' && item.assignee_id === currentUserId)}
                           />
                         </div>
                       ))}
@@ -1504,8 +1438,8 @@ function TaskActionButton({ task, projectId, canAnnotate }: { task: Task; projec
   const Icon = isRework ? RotateCcw : Pencil;
   const workspacePath =
     (task.annotation_type ?? task.task_type) === 'relation_extraction'
-      ? `/workspace-relation/${task.id}`
-      : `/workspace/${task.id}`;
+      ? `/workspace-relation/${task.id}?projectId=${projectId}`
+      : `/workspace/${task.id}?projectId=${projectId}`;
 
   return (
     <Link
@@ -1531,11 +1465,13 @@ function ReviewsTab({
   projectId,
   currentUserId,
   projectRole,
+  isAdmin,
 }: {
   tasks: Task[];
   projectId: string;
   currentUserId?: string;
   projectRole?: string;
+  isAdmin: boolean;
 }) {
   const reviewTasks = tasks.filter((t) =>
     ['submitted', 'rework'].includes(getTaskLifecycleStatus(t))
@@ -1565,6 +1501,7 @@ function ReviewsTab({
         projectId={projectId}
         currentUserId={currentUserId}
         projectRole={projectRole}
+        isAdmin={isAdmin}
         groupRows
         showMethod
       />
@@ -1609,6 +1546,7 @@ function ReviewTaskTable({
   projectId,
   currentUserId,
   projectRole,
+  isAdmin = false,
   groupRows = false,
   showMethod = false,
 }: {
@@ -1617,6 +1555,7 @@ function ReviewTaskTable({
   projectId: string;
   currentUserId?: string;
   projectRole?: string;
+  isAdmin?: boolean;
   groupRows?: boolean;
   showMethod?: boolean;
 }) {
@@ -1721,8 +1660,9 @@ function ReviewTaskTable({
               <div className="flex flex-col items-end gap-3">
                 {group.tasks.map((item) => {
                   const canReview =
-                    projectRole === 'reviewer' &&
-                    (!item.reviewer_id || item.reviewer_id === currentUserId);
+                    isAdmin ||
+                    (projectRole === 'reviewer' &&
+                    (!item.reviewer_id || item.reviewer_id === currentUserId));
                   const reviewPath = `/review/${projectId}/${item.id}${canReview ? '' : '?mode=view'}`;
 
                   return (
@@ -3437,8 +3377,11 @@ function MembersTab({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [pendingRole, setPendingRole] = useState<string>('');
   const { showToast } = useToast();
+  const { user } = useAuthStore();
+  const isAdmin = hasAdminRole(user);
 
   const startEdit = (m: ProjectMember) => {
+    if (isAdmin) return;
     setEditingId(m.user_id);
     setPendingRole(m.role_in_project);
   };
@@ -3547,6 +3490,8 @@ function MembersTab({
                         Hủy
                       </button>
                     </div>
+                  ) : isAdmin ? (
+                    <span className="text-xs text-surface-300">—</span>
                   ) : (
                     <button
                       onClick={() => startEdit(m)}

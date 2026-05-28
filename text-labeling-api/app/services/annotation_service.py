@@ -50,12 +50,13 @@ class AnnotationService:
         page: int = 1,
         page_size: int = 20,
     ) -> dict:
-        query = select(Task).where(Task.assignee_id == current_user.id)
-        count_query = select(func.count(Task.id)).where(
-            Task.assignee_id == current_user.id
-        )
+        is_admin = RoleName.ADMIN.value in current_user.role_names
+        query = select(Task)
+        count_query = select(func.count(Task.id))
         filters = []
 
+        if not is_admin:
+            filters.append(Task.assignee_id == current_user.id)
         if project_id:
             filters.append(Task.project_id == project_id)
         if status:
@@ -132,7 +133,10 @@ class AnnotationService:
         )
         annotations = ann_result.scalars().all()
 
-        can_edit = task.assignee_id == current_user.id
+        can_edit = (
+            task.assignee_id == current_user.id
+            or RoleName.ADMIN.value in current_user.role_names
+        )
         if can_edit and annotations and ts.status == TaskSampleStatus.PENDING:
             ts.status = TaskSampleStatus.ANNOTATED
             await self.db.flush()
@@ -598,24 +602,29 @@ class AnnotationService:
         current_user: User,
         project_id: Optional[UUID] = None,
     ) -> dict:
-        base_filter = Task.assignee_id == current_user.id
+        is_admin = RoleName.ADMIN.value in current_user.role_names
+        filters = []
+        if not is_admin:
+            filters.append(Task.assignee_id == current_user.id)
         if project_id:
-            base_filter = and_(base_filter, Task.project_id == project_id)
+            filters.append(Task.project_id == project_id)
 
-        result = await self.db.execute(
-            select(
-                func.count(Task.id).label("total"),
-                func.count(case((Task.status == TaskStatus.APPROVED, 1))).label(
-                    "completed"
-                ),
-                func.count(
-                    case((Task.status == TaskStatus.IN_PROGRESS, 1))
-                ).label("in_progress"),
-                func.count(case((Task.status == TaskStatus.REWORK, 1))).label(
-                    "rework"
-                ),
-            ).where(base_filter)
+        query = select(
+            func.count(Task.id).label("total"),
+            func.count(case((Task.status == TaskStatus.APPROVED, 1))).label(
+                "completed"
+            ),
+            func.count(
+                case((Task.status == TaskStatus.IN_PROGRESS, 1))
+            ).label("in_progress"),
+            func.count(case((Task.status == TaskStatus.REWORK, 1))).label(
+                "rework"
+            ),
         )
+        if filters:
+            query = query.where(and_(*filters))
+
+        result = await self.db.execute(query)
         row = result.one()
         total = row.total or 0
         completed = row.completed or 0
@@ -712,7 +721,7 @@ class AnnotationService:
 
     async def _get_my_task(self, task_id: UUID, user: User) -> Task:
         task = await self._load_task_with_samples(task_id)
-        if task.assignee_id != user.id:
+        if task.assignee_id != user.id and RoleName.ADMIN.value not in user.role_names:
             raise ForbiddenException("Only the assigned annotator can modify this task")
         return task
 
