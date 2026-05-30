@@ -91,12 +91,12 @@ class AuthService:
                 user.locked_until = datetime.now(timezone.utc) + timedelta(
                     minutes=settings.LOCKOUT_DURATION_MINUTES
                 )
-                await self.db.flush()
+                await self.db.commit()
                 raise AccountLockedException(
                     minutes_remaining=settings.LOCKOUT_DURATION_MINUTES
                 )
 
-            await self.db.flush()
+            await self.db.commit()
             raise UnauthorizedException("Invalid email or password")
 
         # 4. Successful login → reset failed count
