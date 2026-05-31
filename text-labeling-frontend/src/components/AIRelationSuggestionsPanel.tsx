@@ -1,4 +1,4 @@
-import { Check, Loader2, Sparkles, X } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import type {
   EditableAIRelationSuggestion,
   LabelOption,
@@ -41,19 +41,14 @@ export default function AIRelationSuggestionsPanel({
   const acceptedCount = suggestions.filter((suggestion) => suggestion.accepted).length;
 
   return (
-    <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">AI suggestions</p>
-          <p className="text-[11px] text-indigo-500 mt-0.5">Đưa gợi ý phù hợp vào bản nháp.</p>
-        </div>
+    <div className="space-y-2">
+      <div className="flex justify-end">
         <button
           onClick={onSuggest}
           disabled={disabled || loading || entities.length < 2 || labels.length === 0}
-          className="flex shrink-0 items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-white text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="shrink-0 px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-white text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-          Suggest by AI
+          {loading ? 'Đang gợi ý...' : 'Suggest by AI'}
         </button>
       </div>
 

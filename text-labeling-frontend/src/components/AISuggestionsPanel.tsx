@@ -1,4 +1,4 @@
-import { Check, Loader2, Save, Sparkles, X } from 'lucide-react';
+import { Check, Loader2, Save, X } from 'lucide-react';
 import type {
   EditableAIWorkspaceSuggestion,
   LabelOption,
@@ -37,19 +37,14 @@ export default function AISuggestionsPanel({
   const acceptedCount = suggestions.filter((suggestion) => suggestion.accepted).length;
 
   return (
-    <div className="border-b border-indigo-100 bg-indigo-50/50">
-      <div className="px-4 py-3 flex items-center justify-between gap-2">
-        <div>
-          <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">AI suggestions</p>
-          <p className="text-[11px] text-indigo-500 mt-0.5">Xem lại trước khi lưu annotation.</p>
-        </div>
+    <div>
+      <div className="px-4 py-3 flex justify-end">
         <button
           onClick={onSuggest}
           disabled={disabled || loading}
-          className="flex shrink-0 items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-white text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="shrink-0 px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-white text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-          Suggest by AI
+          {loading ? 'Đang gợi ý...' : 'Suggest by AI'}
         </button>
       </div>
 
