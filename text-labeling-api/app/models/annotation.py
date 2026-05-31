@@ -59,6 +59,12 @@ class Annotation(Base, UUIDMixin, TimestampMixin):
     is_ai_generated: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
+    is_ai_assisted: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    ai_model_name: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True
+    )
     ai_confidence: Mapped[Optional[float]] = mapped_column(
         Float, nullable=True
     )

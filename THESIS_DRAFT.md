@@ -38,6 +38,7 @@ Finally, I would like to thank my family and friends for their support during th
 
 | Abbreviation | Meaning |
 | --- | --- |
+| AI | Artificial Intelligence |
 | API | Application Programming Interface |
 | CSV | Comma-Separated Values |
 | ERD | Entity Relationship Diagram |
@@ -45,11 +46,13 @@ Finally, I would like to thank my family and friends for their support during th
 | JSON | JavaScript Object Notation |
 | JSONL | JSON Lines |
 | JWT | JSON Web Token |
+| LLM | Large Language Model |
 | NER | Named Entity Recognition |
 | NLP | Natural Language Processing |
 | QA | Quality Assurance |
 | RBAC | Role-Based Access Control |
 | REST | Representational State Transfer |
+| SMTP | Simple Mail Transfer Protocol |
 | UI | User Interface |
 | UX | User Experience |
 
@@ -79,9 +82,10 @@ Finally, I would like to thank my family and friends for their support during th
    4.4 Security and Access Control  
 5. Chapter V: Results  
    5.1 Achievements  
-   5.2 Limitations  
-   5.3 Future Work  
-   5.4 Conclusion  
+   5.2 Verification Status<br>
+   5.3 Limitations<br>
+   5.4 Future Work<br>
+   5.5 Conclusion<br>
 6. References  
 7. Appendices
 
@@ -95,7 +99,7 @@ In recent years, Natural Language Processing has become an important area in inf
 
 However, manual annotation is often time-consuming and difficult to organize. When a dataset contains many text samples, the project owner must import the data, define labels, assign samples to annotators, monitor progress, review the quality of submitted annotations, and export the final result in a usable format. If these steps are handled through spreadsheets or informal communication, the workflow can easily become inconsistent. It is difficult to know which samples have been assigned, which samples are still pending, and which annotations have been approved by reviewers.
 
-The motivation of this project is to build a web-based text labeling platform that supports the full lifecycle of dataset annotation. The system is designed for small and medium annotation teams where project owners, annotators, and reviewers need to collaborate in a structured environment. Instead of focusing only on the annotation interface, the platform also includes project management, dataset import, label configuration, task assignment, review, notification, and export functions.
+The motivation of this project is to build a web-based text labeling platform that supports the full lifecycle of dataset annotation. The system is designed for small and medium annotation teams where project owners, annotators, and reviewers need to collaborate in a structured environment. Instead of focusing only on the annotation interface, the platform also includes project management, dataset import, label configuration, task assignment, review, notification, export, and optional AI-assisted suggestion functions.
 
 ## 1.2 Objectives
 
@@ -108,6 +112,7 @@ The specific objectives are:
 - To support several annotation task types, including text classification, named entity recognition, sequence labeling, and relation extraction.
 - To implement task assignment using manual and round-robin methods.
 - To provide annotation workspaces where annotators can label text samples, save drafts, mark samples as completed, and submit tasks.
+- To provide optional AI suggestions that remain under annotator control before they are saved.
 - To provide review workspaces where reviewers can approve or reject annotations and send feedback for rework.
 - To export approved labeled data in common formats such as JSON, JSONL, and CSV.
 - To build a usable frontend interface and a structured backend API suitable for future extension.
@@ -131,12 +136,14 @@ For project owners:
 - Assign samples to annotators and reviewers.
 - Monitor annotation, review, and export progress.
 - Export labeled data after review.
+- Manage versioned project guidelines through backend APIs.
 
 For annotators:
 
 - View assigned tasks.
 - Open an annotation workspace for each task.
-- Select text spans and apply labels.
+- Apply classification labels, select entity spans, and create relation links.
+- Request AI suggestions, review their confidence scores, and accept, edit, or reject them before saving.
 - Save drafts and navigate between samples.
 - Mark samples as done and submit completed tasks.
 - Receive review feedback and fix rejected samples.
@@ -157,10 +164,12 @@ The Text Labeling Platform includes the following main features:
 - User and role management for administrator-level control.
 - Project management with project code, name, objective, priority, deadline, status, and progress metrics.
 - Member management inside each project with project owner, annotator, and reviewer roles.
-- Dataset import with CSV, JSON, and JSONL support at the data model level.
+- Dataset import from CSV, JSON, and JSONL files parsed in the browser and submitted to the backend as normalized inline samples.
 - Label set management with label groups, colors, shortcut keys, and required label options.
+- Versioned project guideline storage through backend APIs.
 - Task assignment using manual sample counts or round-robin distribution.
 - Annotation workspaces for text classification, NER, sequence labeling, and relation extraction.
+- Optional Gemini-backed AI suggestions for text classification, NER, and relation extraction with explicit annotator review before persistence.
 - Draft saving and task sample status management.
 - Review and QA workflow with approval, rejection, feedback, and rework.
 - Export of labeled records in JSON, JSONL, and CSV.
@@ -201,8 +210,9 @@ Client environment:
 
 Software dependencies:
 
-- Backend: FastAPI, Uvicorn, Pydantic, SQLAlchemy, asyncpg, Alembic, python-jose, Passlib, bcrypt, aiosmtplib, Jinja2, and related utilities.
+- Backend: FastAPI, Uvicorn, Pydantic, SQLAlchemy, asyncpg, Alembic, python-jose, Passlib, bcrypt, HTTPX, aiosmtplib, Jinja2, and related utilities.
 - Frontend: React, TypeScript, Vite, React Router, Axios, Zustand, Tailwind CSS, and Lucide React.
+- External optional service: Google Gemini API for on-demand annotation suggestions.
 
 ## 2.2 Non-functional Requirements
 
@@ -228,6 +238,10 @@ The backend is organized into models, schemas, services, and API endpoint module
 
 The database schema separates projects, datasets, samples, tasks, task samples, annotations, reviews, exports, and notifications. This design allows the system to support multiple projects and multiple annotation teams. The backend uses asynchronous database access, which is suitable for handling concurrent API requests.
 
+### 2.2.6 AI Assistance Safety
+
+AI suggestions must not silently become ground-truth labels. The backend sends suggestion requests to Gemini only when an annotator explicitly asks for assistance. Returned data is validated against allowed labels, confidence ranges, entity offsets, and relation endpoints. Suggestions remain temporary until the annotator accepts or edits them and saves them through the normal annotation workflow.
+
 ## 2.3 Functional Requirements
 
 The main functional requirements are:
@@ -236,10 +250,12 @@ The main functional requirements are:
 - Administrators can create, list, update, lock, unlock, delete, and reset user accounts.
 - Project owners can create, update, archive, delete, and list projects.
 - Project owners can add, update, and remove project members.
-- Project owners can import datasets and view dataset samples.
+- Project owners can import browser-parsed CSV, JSON, or JSONL datasets and view dataset samples.
 - Project owners can create label sets, label groups, and labels.
+- Project owners can create versioned annotation guidelines through backend APIs.
 - Project owners can assign tasks manually or with round-robin distribution.
 - Annotators can view assigned tasks, start tasks, annotate text, save drafts, mark samples as done, and submit tasks.
+- Annotators can request, review, edit, accept, or reject Gemini-backed AI suggestions before saving annotations.
 - Reviewers can view a review queue, inspect submitted samples, approve or reject samples, and submit review results.
 - Project owners can export labeled data in JSON, JSONL, or CSV.
 - Users can view notifications and update notification preferences.
@@ -302,7 +318,7 @@ The main functional requirements are:
 | Use case name | Import Dataset |
 | Actor | Project owner or administrator |
 | Brief definition | The user imports raw text samples into a project. |
-| Main flow | 1. The owner opens the dataset tab. 2. The owner selects or enters dataset content. 3. The system validates source format and sample content. 4. Valid samples are saved as data samples. 5. The dataset status becomes ready. |
+| Main flow | 1. The owner opens the dataset tab. 2. The owner selects CSV, JSON, or JSONL files, or enters text samples. 3. The frontend parses file content into normalized sample objects. 4. The backend validates source format and sample content. 5. Valid samples are saved as data samples. 6. The dataset status becomes ready. |
 | Alternative flow | Empty samples are skipped. If no valid samples are found, the dataset is marked as error and the import request fails. |
 | Pre-condition | The project exists and the user is a project owner. |
 | Post-condition | A ready dataset is available for task assignment. |
@@ -367,6 +383,30 @@ The main functional requirements are:
 | Pre-condition | The project contains annotated data. |
 | Post-condition | A JSON, JSONL, or CSV export is generated. |
 
+### 2.4.11 Manage Annotation Guidelines
+
+| Item | Description |
+| --- | --- |
+| Use case name | Manage Annotation Guidelines |
+| Actor | Project owner or administrator |
+| Brief definition | The user creates versioned annotation instructions for a project through backend APIs. |
+| Main flow | 1. The owner submits guideline content or a file URL. 2. The backend checks project-owner permission. 3. The system calculates the next guideline version. 4. The guideline version is stored. 5. Project members can retrieve the latest version. |
+| Alternative flow | If the project does not exist or the current user lacks permission, the backend rejects the request. |
+| Pre-condition | The project exists and the current user is an owner or administrator. |
+| Post-condition | A new guideline version is available through the API. |
+
+### 2.4.12 Request and Accept AI Suggestions
+
+| Item | Description |
+| --- | --- |
+| Use case name | Request and Accept AI Suggestions |
+| Actor | Annotator |
+| Brief definition | The annotator requests optional Gemini-backed suggestions and decides which labels to save. |
+| Main flow | 1. The annotator opens a classification, NER, or relation extraction sample. 2. The annotator requests AI suggestions. 3. The backend sends the source text, allowed labels, and relation entities when needed to Gemini. 4. The backend validates the structured response. 5. The frontend displays suggestions and confidence scores. 6. The annotator edits, accepts, or rejects suggestions. 7. Accepted items are saved through the normal annotation endpoints with AI-assistance metadata. |
+| Alternative flow | If the API key is missing, Gemini is unavailable, output validation fails, or no suitable suggestion is returned, the system displays an error or an empty result and does not save annotations. |
+| Pre-condition | The annotator is authenticated, the sample is editable, and relevant labels are configured. Relation extraction also requires at least two entities. |
+| Post-condition | Only annotator-approved suggestions become stored annotations. |
+
 ---
 
 # CHAPTER III: METHODOLOGY
@@ -379,7 +419,7 @@ The Text Labeling Platform follows a three-layer web application architecture:
 2. Application layer: a FastAPI backend that exposes RESTful endpoints, handles authentication, validates requests, enforces permissions, and executes business logic.
 3. Data layer: a PostgreSQL database accessed through SQLAlchemy models and asynchronous sessions.
 
-The frontend communicates with the backend using HTTP requests through Axios. The backend returns JSON responses. Protected API routes require a bearer access token. The database is used to store users, roles, projects, members, datasets, samples, label sets, tasks, annotations, reviews, exports, notifications, and audit logs.
+The frontend communicates with the backend using HTTP requests through Axios. The backend returns JSON responses. Protected API routes require a bearer access token. The database is used to store users, roles, projects, members, datasets, samples, label sets, tasks, annotations, reviews, exports, notifications, and audit logs. For optional AI assistance, the backend calls the Gemini API with HTTPX and returns validated temporary suggestions to the frontend.
 
 Suggested architecture diagram placeholder:
 
@@ -390,6 +430,7 @@ flowchart LR
     API --> DB[(PostgreSQL Database)]
     API --> Mail[SMTP Email Service]
     API --> Files[Export Files]
+    API -. Optional AI suggestion request .-> Gemini[Google Gemini API]
 ```
 
 ## 3.2 Database Design
@@ -408,7 +449,7 @@ Main entities:
 - LabelSet, LabelGroup, and Label: store annotation label configuration.
 - Task: stores assignment information for an annotator, reviewer, dataset, label set, and task type.
 - TaskSample: connects tasks to data samples and tracks sample-level status.
-- Annotation: stores labeled text spans with offsets, selected text, and label.
+- Annotation: stores labeled text spans with offsets, selected text, label, and optional AI-assistance metadata such as model name and confidence.
 - AnnotationDraft: stores auto-saved draft annotation data.
 - Review: stores reviewer decisions and feedback.
 - Export: stores export history and generated file information.
@@ -444,7 +485,7 @@ The project workflow is designed as a pipeline:
 2. The project owner imports one or more datasets.
 3. The project owner creates label sets for the annotation task.
 4. The project owner assigns samples to annotators and optionally reviewers.
-5. Annotators work on assigned tasks and submit them.
+5. Annotators work on assigned tasks, optionally request AI suggestions, review or edit them, and save selected labels.
 6. Reviewers approve or reject submitted samples.
 7. Rejected tasks return to annotators for rework.
 8. Approved samples become available for export.
@@ -458,6 +499,9 @@ flowchart TD
     C --> D[Configure Labels]
     D --> E[Assign Tasks]
     E --> F[Annotate Samples]
+    F -. Optional request .-> K[Review AI Suggestions]
+    K -->|Accept or edit| F
+    K -->|Reject| F
     F --> G[Submit Task]
     G --> H[Review Samples]
     H -->|Rejected| I[Rework]
@@ -495,6 +539,10 @@ Vite is used as the frontend build tool and development server. It provides fast
 
 Docker Compose is used to run the backend service and PostgreSQL database locally. This makes the development environment easier to reproduce.
 
+### 4.1.7 Gemini API and HTTPX
+
+The platform uses the Google Gemini API as an optional external suggestion provider. HTTPX is used by the FastAPI backend to send asynchronous requests. The API key, model name, and timeout are loaded from environment variables. The default model configured in the current project is `gemini-2.5-flash`.
+
 ## 4.2 Backend Implementation
 
 The backend is organized into the following main folders:
@@ -524,7 +572,7 @@ Project owners can add members with project-specific roles. The system prevents 
 
 ### 4.2.4 Dataset Module
 
-The dataset module handles importing text samples into a project. The backend validates the project owner permission, source format, and sample content. Empty samples are skipped, while valid samples are stored as `DataSample` records. After import, the dataset status becomes ready.
+The dataset module handles importing text samples into a project. The frontend accepts CSV, JSON, and JSONL files, parses them in the browser, and submits normalized inline sample objects. The backend validates the project owner permission, declared source format, and sample content. Empty samples are skipped, while valid samples are stored as `DataSample` records. After import, the dataset status becomes ready.
 
 The module also provides dataset listing, dataset detail, paginated sample listing, and dataset deletion. Deletion is blocked when the dataset already has assigned tasks, preventing accidental loss of annotation work.
 
@@ -545,7 +593,7 @@ The task module validates dataset readiness, label set ownership, annotator role
 
 The annotation module handles annotator workflows. Annotators can view their tasks, start a task, open samples, create annotations, update annotations, delete annotations, bulk update annotations, save drafts, mark sample status, navigate between samples, and submit a task.
 
-Each annotation stores the task sample, label, character offsets, selected text, creator, and optional AI metadata fields. The draft model stores temporary annotation data so that unfinished work is not lost.
+Each annotation stores the task sample, label, character offsets, selected text, creator, and optional AI metadata fields. These fields distinguish accepted AI-assisted annotations from labels created manually. The draft model stores temporary annotation data so that unfinished work is not lost.
 
 ### 4.2.8 Review Module
 
@@ -559,7 +607,17 @@ The export module collects annotated samples from a project and generates output
 
 Export records are saved in the database so that project owners can view export history. The system also creates an export-ready notification after a successful export.
 
-### 4.2.10 Notification and Audit Log Modules
+### 4.2.10 AI Suggestion Module
+
+The AI suggestion module provides an on-demand, human-in-the-loop workflow. It supports three suggestion modes:
+
+- Text classification: suggests one or more configured labels for a text sample.
+- NER: suggests entity text, labels, and exact character offsets.
+- Relation extraction: suggests typed relations between existing entity identifiers without inventing new endpoints.
+
+The backend sends requests to Gemini with a JSON response schema and validates the response again after parsing. It checks configured labels, confidence ranges, NER offsets, exact selected text, distinct relation endpoints, and known entity identifiers. Suggestions are ephemeral: the suggestion endpoint does not write annotation records. Persistence occurs only after an annotator accepts or edits a suggestion and saves it through the regular annotation endpoints.
+
+### 4.2.11 Notification and Audit Log Modules
 
 Notifications are used to inform users about important events, such as task assignment, task submission, review completion, task rejection, project deadlines, annotation milestones, and export readiness. Users can view notifications and mark them as read.
 
@@ -572,14 +630,14 @@ The frontend is built with React, TypeScript, React Router, Axios, Zustand, and 
 - Login page: authenticates users and stores session state.
 - Dashboard page: displays summary statistics and recent activity.
 - Projects page: lists projects and provides project creation, edit, member, and export history controls.
-- Project Details page: contains tabs for overview, data type, datasets, labels, assignment, annotation tasks, review tasks, completed tasks, members, and export.
-- Workspace page: provides an annotation workspace for span-based labeling tasks.
-- Relation Workspace page: provides relation extraction support using entities and relation links.
+- Project Details page: contains tabs for overview, data type, datasets, label configuration, assignment, annotation tasks, review tasks, and completed tasks. Member management is available from the project overview, and export is opened from project controls.
+- Workspace page: provides text classification and NER annotation interfaces with optional AI suggestions.
+- Relation Workspace page: provides relation extraction support using entities, relation links, drafts, and optional AI relation suggestions.
 - Review Workspace page: provides reviewer tools for approving or rejecting samples.
 - Users page: provides administrator user management.
 - Settings page: provides profile, security, appearance, notification, and system settings.
 
-The frontend uses API clients to call backend endpoints. It also defines TypeScript interfaces for project, user, dataset, task, annotation, label, and response structures. This makes the frontend implementation more consistent with the backend contract.
+The frontend uses API clients to call backend endpoints. It also defines TypeScript interfaces for project, user, dataset, task, annotation, label, AI suggestion, and response structures. This makes the frontend implementation more consistent with the backend contract.
 
 ## 4.4 Security and Access Control
 
@@ -595,6 +653,8 @@ The system applies security at multiple levels:
 - Project owners and administrators can manage projects, datasets, labels, assignments, and exports.
 - Annotators can access only assigned tasks unless they also have higher privileges.
 - Reviewers can access submitted tasks only in projects where they have reviewer or owner rights.
+- The Gemini API key remains on the backend and is not exposed to the browser.
+- Source text is treated as untrusted data in the AI prompt, AI output is schema-validated, and suggestions require explicit annotator confirmation before persistence.
 
 ---
 
@@ -609,43 +669,68 @@ The project successfully produced a functional full-stack text labeling platform
 - Dataset import and sample browsing.
 - Label set, label group, and label configuration.
 - Manual and round-robin task assignment.
-- Annotation workspaces for text labeling tasks.
+- Annotation workspaces for text classification, NER, and relation extraction tasks.
+- Optional Gemini-backed suggestions that remain under annotator review before persistence.
 - Draft saving and task submission.
 - Review workflow with approval, rejection, feedback, and rework.
 - Export of labeled data in JSON, JSONL, and CSV.
 - Dashboard, notification, settings, and audit log support.
+- Versioned annotation guideline storage through backend APIs.
 
 The platform provides a structured workflow that is more reliable than managing annotation tasks through spreadsheets. It separates responsibilities between project owners, annotators, reviewers, and administrators. It also records task and sample statuses, which helps teams monitor project progress.
 
-## 5.2 Limitations
+## 5.2 Verification Status
+
+The repository was reviewed and checked locally on May 31, 2026. The following commands completed successfully:
+
+| Verification item | Command or endpoint | Result |
+| --- | --- | --- |
+| Frontend lint | `npm.cmd run lint` | Passed |
+| Frontend production build | `npm run build` | Passed with bundle-size warnings |
+| Backend static lint | `docker exec tlp_api ruff check app alembic` | Passed |
+| Backend bytecode compilation | `docker exec tlp_api python -m compileall app` | Passed |
+| Running service health check | `GET /health` | Returned `{"status":"healthy","app":"Text Labeling Platform","env":"development"}` |
+
+The frontend build reported that the main JavaScript chunk is larger than 500 kB after minification and that a dynamic Axios-client import does not create a separate chunk because the same module is also imported statically. These warnings do not block the current build but identify an optimization opportunity.
+
+No automated unit, integration, or end-to-end test suite was found in the current repository. The AI suggestion flow was reviewed statically and compiled successfully, but a live Gemini response was not included in this verification because it depends on an external API key and network service.
+
+## 5.3 Limitations
 
 Although the system implements the main workflow, several limitations remain:
 
 - The current system focuses on text annotation and does not support image, audio, or video annotation.
+- Dataset files are parsed in the browser and sent as inline sample objects; server-side upload processing and durable source-file storage are not yet implemented.
 - The export function supports common formats but does not yet include advanced dataset formats used by some machine learning libraries.
 - The platform does not yet include real-time collaboration between multiple annotators on the same sample.
 - Quality metrics such as inter-annotator agreement are not yet implemented.
-- The AI-related fields exist in the annotation model, but automatic pre-labeling is not fully implemented.
-- The current deployment and storage model is suitable for development and small teams, but production deployment would require stronger file storage, monitoring, backup, and security configuration.
+- AI suggestions are on-demand aids rather than autonomous labels. They require Gemini availability, a configured API key, and human validation; batch pre-labeling and measured suggestion-quality benchmarks are not yet implemented.
+- Versioned guideline APIs exist in the backend, but a dedicated frontend editor and guideline-history screen are not yet implemented.
+- The repository does not yet include automated unit, integration, or end-to-end tests.
+- The frontend production bundle can be optimized further with code splitting.
+- The current deployment and storage model is suitable for development and small teams, but production deployment would require durable object storage, monitoring, backup, CI/CD, and stronger secrets management.
 
-## 5.3 Future Work
+## 5.4 Future Work
 
 Future development can improve the system in the following directions:
 
-- Add automatic pre-annotation using NLP models to reduce manual labeling time.
+- Add batch pre-annotation, AI provider configuration, and measured quality evaluation for AI suggestions.
 - Add inter-annotator agreement metrics and reviewer analytics.
 - Add more export formats for common machine learning frameworks.
 - Add advanced search and filtering for samples and annotations.
-- Add guideline version comparison and required guideline acknowledgement before annotation.
+- Add a frontend guideline editor, version comparison, and required guideline acknowledgement before annotation.
+- Add server-side file upload processing and durable object storage for imported datasets and generated exports.
 - Improve notification delivery through email or real-time WebSocket updates.
 - Add project-level reports for productivity, review quality, and annotation consistency.
-- Improve deployment with cloud storage, CI/CD, monitoring, and production-grade secrets management.
+- Add automated backend, frontend, integration, and end-to-end test suites.
+- Reduce the frontend bundle size with route-level code splitting.
+- Improve deployment with CI/CD, monitoring, backup, and production-grade secrets management.
 
-## 5.4 Conclusion
+## 5.5 Conclusion
 
 This thesis presented the design and implementation of a Text Labeling Platform for NLP dataset annotation. The system supports the complete annotation lifecycle, including project creation, dataset import, label configuration, task assignment, annotation, review, and export.
 
-The project demonstrates how a full-stack web application can organize complex data labeling workflows and improve collaboration between project owners, annotators, and reviewers. By combining FastAPI, PostgreSQL, React, and TypeScript, the platform provides a maintainable foundation for future annotation features and production-level improvements.
+The project demonstrates how a full-stack web application can organize complex data labeling workflows and improve collaboration between project owners, annotators, and reviewers. By combining FastAPI, PostgreSQL, React, TypeScript, and optional Gemini-backed assistance, the platform provides a maintainable foundation for future annotation features and production-level improvements while keeping final labeling decisions under human control.
 
 ---
 
@@ -661,6 +746,8 @@ The project demonstrates how a full-stack web application can organize complex d
 8. Vite Documentation, https://vite.dev/
 9. JWT Introduction, https://jwt.io/introduction
 10. Pydantic Documentation, https://docs.pydantic.dev/
+11. Gemini API Reference, https://ai.google.dev/gemini-api/docs/api-overview
+12. HTTPX Async Support, https://www.python-httpx.org/async/
 
 ---
 
@@ -681,6 +768,8 @@ Insert screenshots of the following pages:
 - Task assignment modal.
 - Annotation workspace.
 - Relation extraction workspace.
+- AI suggestion panel for text classification or NER.
+- AI relation suggestion panel.
 - Review workspace.
 - User management page.
 - Settings page.
@@ -697,6 +786,7 @@ Suggested figures to include in the final Word/PDF version:
 - Dataset import sequence diagram.
 - Task assignment sequence diagram.
 - Annotation submission sequence diagram.
+- AI suggestion request and acceptance sequence diagram.
 - Review sequence diagram.
 - Export sequence diagram.
 
@@ -711,4 +801,24 @@ Suggested tables to include:
 - Database table summary.
 - API endpoint summary.
 - Testing summary.
+- Current implementation status summary.
 
+## Appendix D: Current Implementation Status Snapshot
+
+The following snapshot distinguishes complete workflows from partial implementation areas at the time of review on May 31, 2026.
+
+| Area | Status | Notes |
+| --- | --- | --- |
+| Authentication and account security | Implemented | JWT access and refresh tokens, logout, password reset, password hashing, failed-login tracking, and temporary lockout are present. |
+| User and role administration | Implemented | Administrator endpoints and frontend management page are present. |
+| Project and member management | Implemented | Project metadata, project roles, owner safeguards, progress summaries, and member controls are present. |
+| Dataset import and browsing | Implemented with current-scope limitation | Frontend parses CSV, JSON, and JSONL files; backend accepts normalized inline samples. Direct backend file upload is deferred. |
+| Label configuration | Implemented | Label sets, groups, labels, colors, shortcuts, and required flags are present. |
+| Versioned guidelines | Partially implemented | Database model, service, and API endpoints are present. A dedicated frontend authoring and history workflow is deferred. |
+| Task assignment | Implemented | Manual and round-robin assignment, reviewer distribution, validation, and assignment editing controls are present. |
+| Annotation workspaces | Implemented | Text classification, NER, relation extraction, draft saving, status changes, navigation, and submission are present. |
+| AI annotation assistance | Implemented as optional assistance | Gemini-backed on-demand suggestions support classification, NER, and relations. Suggestions are validated and persist only after annotator approval. |
+| Review and rework | Implemented | Queue, approval, rejection feedback, review submission, and rework flow are present. |
+| Notifications, dashboard, and settings | Implemented | Dashboard statistics, recent activity, polling notification bell, read state, and notification preferences are present. |
+| Export | Implemented with current-scope limitation | JSON, JSONL, and CSV exports are present. Generated files use temporary local storage in the current backend. |
+| Automated testing and production operations | Deferred | Static checks and health verification pass, but automated test suites, durable storage, monitoring, backup, and CI/CD remain future work. |

@@ -5,6 +5,7 @@ Async Alembic environment for SQLAlchemy migrations.
 
 import asyncio
 from logging.config import fileConfig
+from uuid import uuid4
 
 from alembic import context
 from sqlalchemy import pool
@@ -52,10 +53,20 @@ def do_run_migrations(connection: Connection) -> None:
 
 async def run_async_migrations() -> None:
     """Run migrations in 'online' mode (async)."""
+    connect_args = {
+        "prepared_statement_cache_size": 0,
+        "statement_cache_size": 0,
+    }
+    if "pooler.supabase.com" in settings.DATABASE_URL:
+        connect_args["prepared_statement_name_func"] = (
+            lambda: f"__asyncpg_{uuid4()}__"
+        )
+
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

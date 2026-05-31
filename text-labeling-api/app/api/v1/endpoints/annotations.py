@@ -29,6 +29,8 @@ from app.schemas.annotation import (
     AdjacentSamplesResponse,
     AnnotationResponse,
     AnnotationSampleResponse,
+    AISuggestRequest,
+    AISuggestResponse,
     BulkAnnotationsRequest,
     CreateAnnotationRequest,
     DraftResponse,
@@ -37,13 +39,29 @@ from app.schemas.annotation import (
     SaveDraftRequest,
     UpdateAnnotationRequest,
 )
+from app.services.ai_suggestion_service import AISuggestionService
 from app.services.annotation_service import AnnotationService
 
 router = APIRouter(prefix="/annotations", tags=["Annotations"])
+ai_router = APIRouter(prefix="/api/annotations", tags=["Annotations"])
 
 AnnotatorRole = Depends(
     require_roles(RoleName.ANNOTATOR, RoleName.ADMIN)
 )
+
+
+# ================================================================
+# GEMINI AI SUGGESTIONS
+# ================================================================
+@ai_router.post("/ai-suggest", response_model=AISuggestResponse)
+@router.post("/ai-suggest", response_model=AISuggestResponse)
+async def ai_suggest(
+    body: AISuggestRequest,
+    current_user: User = AnnotatorRole,
+):
+    """Return ephemeral Gemini suggestions without saving annotations."""
+    service = AISuggestionService()
+    return await service.suggest(body)
 
 
 # ================================================================
@@ -169,6 +187,9 @@ async def create_annotation(
         start_offset=body.start_offset,
         end_offset=body.end_offset,
         selected_text=body.selected_text,
+        is_ai_assisted=body.is_ai_assisted,
+        ai_model_name=body.ai_model_name,
+        ai_confidence=body.ai_confidence,
     )
 
 

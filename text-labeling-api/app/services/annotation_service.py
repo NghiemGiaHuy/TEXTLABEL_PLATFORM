@@ -243,6 +243,9 @@ class AnnotationService:
         start_offset: int,
         end_offset: int,
         selected_text: str,
+        is_ai_assisted: bool = False,
+        ai_model_name: Optional[str] = None,
+        ai_confidence: Optional[float] = None,
     ) -> dict:
         task = await self._get_my_task(task_id, current_user)
         ts = await self._get_task_sample(task_sample_id, task.id)
@@ -267,6 +270,9 @@ class AnnotationService:
             end_offset=end_offset,
             selected_text=selected_text,
             created_by=current_user.id,
+            is_ai_assisted=is_ai_assisted,
+            ai_model_name=ai_model_name,
+            ai_confidence=ai_confidence,
         )
         self.db.add(annotation)
 
@@ -386,6 +392,9 @@ class AnnotationService:
                 end_offset=data["end_offset"],
                 selected_text=data["selected_text"],
                 created_by=current_user.id,
+                is_ai_assisted=data.get("is_ai_assisted", False),
+                ai_model_name=data.get("ai_model_name"),
+                ai_confidence=data.get("ai_confidence"),
             )
             self.db.add(ann)
             new_annotations.append(ann)
@@ -841,6 +850,8 @@ class AnnotationService:
             "selected_text": a.selected_text,
             "created_by": a.created_by,
             "is_ai_generated": a.is_ai_generated,
+            "is_ai_assisted": a.is_ai_assisted,
+            "ai_model_name": a.ai_model_name,
             "ai_confidence": a.ai_confidence,
             "created_at": a.created_at,
             "updated_at": a.updated_at,

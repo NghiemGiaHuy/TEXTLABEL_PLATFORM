@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
+from app.api.v1.endpoints import annotations
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, Base, engine
 from app.core.seed import run_seed
@@ -85,6 +86,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # --- Routers ---
 app.include_router(api_router)
+app.include_router(annotations.ai_router)
 
 
 # --- Health Check ---

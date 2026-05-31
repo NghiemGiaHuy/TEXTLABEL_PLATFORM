@@ -3,6 +3,8 @@
 import axiosClient from './axiosClient';
 import type {
   AdjacentSamplesResponse,
+  AISuggestPayload,
+  AISuggestResponse,
   Annotation,
   AnnotationSampleResponse,
   CreateAnnotationPayload,
@@ -10,6 +12,17 @@ import type {
 } from '../types';
 
 export const annotationApi = {
+  /** Request ephemeral Gemini suggestions. Nothing is saved by this endpoint. */
+  suggestByAI: async (
+    payload: AISuggestPayload
+  ): Promise<AISuggestResponse> => {
+    const { data } = await axiosClient.post<AISuggestResponse>(
+      '/api/annotations/ai-suggest',
+      payload
+    );
+    return data;
+  },
+
   // ─── Task lifecycle ─────────────────────────────────────
 
   /** Get task detail with samples list */

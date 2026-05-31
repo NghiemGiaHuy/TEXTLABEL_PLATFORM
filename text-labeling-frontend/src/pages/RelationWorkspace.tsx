@@ -11,6 +11,7 @@ import {
   Send,
   Trash2,
   Plus,
+  Save,
   Clock,
   Edit2,
   X,
@@ -22,9 +23,11 @@ import { buildApiUrl } from '../api/apiConfig';
 import { useAuthStore } from '../store/authStore';
 import { useToast } from '../components/toastContext';
 import { useConfirm } from '../components/ConfirmDialog';
+import AIRelationSuggestionsPanel from '../components/AIRelationSuggestionsPanel';
 import type {
   Annotation,
   AnnotationSampleResponse,
+  EditableAIRelationSuggestion,
   LabelOption,
   TaskDetail,
   TaskSample,
@@ -59,6 +62,9 @@ interface Relation {
   relationType: string;
   relLabelId: string;
   color: string;
+  isAiAssisted?: boolean;
+  aiModelName?: string;
+  aiConfidence?: number;
 }
 
 interface TextSelection {
@@ -171,6 +177,9 @@ function restoreRelations(
         relLabelId: rel.relLabelId,
         relationType: label?.name ?? rel.relationType ?? '',
         color: label?.color ?? rel.color ?? '#10B981',
+        isAiAssisted: rel.isAiAssisted ?? false,
+        aiModelName: rel.aiModelName,
+        aiConfidence: rel.aiConfidence,
       };
     })
     .filter((rel): rel is Relation => rel !== null);
@@ -509,6 +518,8 @@ export default function RelationWorkspace() {
   const [editingRelId, setEditingRelId] = useState<string | null>(null);
   const [selection, setSelection] = useState<TextSelection | null>(null);
   const [workspaceStep, setWorkspaceStep] = useState<WorkspaceStep>('entities');
+  const [aiSuggestions, setAISuggestions] = useState<EditableAIRelationSuggestion[]>([]);
+  const [aiLoading, setAILoading] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const entityRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -591,7 +602,7 @@ export default function RelationWorkspace() {
     setLoading(true);
     setError('');
     try {
-      let taskDetail = projectIdParam
+      const taskDetail = projectIdParam
         ? await annotationApi.getTask(projectIdParam, taskId).then((detail) => ({ ...detail, status: detail.task_status ?? detail.status }))
         : await fetchMyTask(taskId);
       if (!taskDetail) {
@@ -629,6 +640,7 @@ export default function RelationWorkspace() {
   const goTo = useCallback(async (idx: number) => {
     if (!task || !taskId) return;
     const clamped = Math.max(0, Math.min(idx, task.task_samples.length - 1));
+    setAISuggestions([]);
     setCurrentSampleIndex(clamped);
     await loadSample(taskId, task.task_samples[clamped]);
   }, [task, taskId, loadSample]);
@@ -668,6 +680,9 @@ export default function RelationWorkspace() {
   const handleAddRelation = () => {
     if (isReadOnly) return;
     if (!selectedHead || !selectedTail || !selectedRelLabel) return;
+    const existing = editingRelId
+      ? relations.find((relation) => relation.id === editingRelId)
+      : undefined;
     const entry = {
       id: editingRelId ?? `rel-${Date.now()}`,
       headId: selectedHead,
@@ -675,6 +690,9 @@ export default function RelationWorkspace() {
       relationType: selectedRelLabel.name,
       relLabelId: selectedRelLabel.id,
       color: selectedRelLabel.color,
+      isAiAssisted: existing?.isAiAssisted,
+      aiModelName: existing?.aiModelName,
+      aiConfidence: existing?.aiConfidence,
     };
     if (editingRelId) {
       setRelations((prev) => prev.map((r) => r.id === editingRelId ? entry : r));
@@ -705,6 +723,108 @@ export default function RelationWorkspace() {
       setSelectedRelLabelId('');
     }
   };
+
+  // ── Ephemeral AI relation suggestions ──────────────────────
+  const handleRequestAISuggestions = useCallback(async () => {
+    if (isReadOnly || !sampleData || entities.length < 2 || relTypeOptions.length === 0) return;
+    setAILoading(true);
+    try {
+      const response = await annotationApi.suggestByAI({
+        task_type: 'relation_extraction',
+        text: sampleData.content,
+        labels: relTypeOptions.map((label) => label.name),
+        entities: entities.map((entity) => ({
+          id: entity.id,
+          text: entity.text,
+          label: entity.label,
+          start: entity.start,
+          end: entity.end,
+        })),
+      });
+      const now = Date.now();
+      const suggestions: EditableAIRelationSuggestion[] = response.suggestions.flatMap((suggestion, index) =>
+        'relation' in suggestion && suggestion.head_id && suggestion.tail_id
+          ? [{
+              ...suggestion,
+              id: `ai-relation-${now}-${index}`,
+              head_id: suggestion.head_id,
+              tail_id: suggestion.tail_id,
+              accepted: false,
+              model_name: response.model_name,
+            }]
+          : []
+      );
+      setAISuggestions(suggestions);
+      if (suggestions.length === 0) {
+        showToast('info', 'Gemini không tìm thấy quan hệ phù hợp');
+      }
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      showToast('error', e.response?.data?.detail || 'Không thể lấy gợi ý AI');
+    } finally {
+      setAILoading(false);
+    }
+  }, [isReadOnly, sampleData, entities, relTypeOptions, showToast]);
+
+  const handleChangeAISuggestion = useCallback((
+    id: string,
+    patch: Partial<EditableAIRelationSuggestion>
+  ) => {
+    setAISuggestions((previous) => previous.map((suggestion) => {
+      if (suggestion.id !== id) return suggestion;
+      const headId = patch.head_id ?? suggestion.head_id;
+      const tailId = patch.tail_id ?? suggestion.tail_id;
+      return {
+        ...suggestion,
+        ...patch,
+        head: entities.find((entity) => entity.id === headId)?.text ?? suggestion.head,
+        tail: entities.find((entity) => entity.id === tailId)?.text ?? suggestion.tail,
+      };
+    }));
+  }, [entities]);
+
+  const handleToggleAcceptAISuggestion = useCallback((id: string) => {
+    setAISuggestions((previous) => previous.map((suggestion) =>
+      suggestion.id === id
+        ? { ...suggestion, accepted: !suggestion.accepted }
+        : suggestion
+    ));
+  }, []);
+
+  const handleRejectAISuggestion = useCallback((id: string) => {
+    setAISuggestions((previous) => previous.filter((suggestion) => suggestion.id !== id));
+  }, []);
+
+  const handleAddAcceptedAISuggestions = useCallback(() => {
+    if (isReadOnly) return;
+    const accepted = aiSuggestions.filter((suggestion) => suggestion.accepted);
+    if (accepted.length === 0) return;
+    const additions: Relation[] = [];
+    for (const suggestion of accepted) {
+      const label = relTypeOptions.find((option) => option.name === suggestion.relation);
+      if (!label || suggestion.head_id === suggestion.tail_id) continue;
+      const duplicate = [...relations, ...additions].some((relation) =>
+        relation.headId === suggestion.head_id
+        && relation.tailId === suggestion.tail_id
+        && relation.relLabelId === label.id
+      );
+      if (duplicate) continue;
+      additions.push({
+        id: `rel-ai-${Date.now()}-${additions.length}`,
+        headId: suggestion.head_id,
+        tailId: suggestion.tail_id,
+        relationType: label.name,
+        relLabelId: label.id,
+        color: label.color,
+        isAiAssisted: true,
+        aiModelName: suggestion.model_name,
+        aiConfidence: suggestion.confidence,
+      });
+    }
+    setRelations((previous) => [...previous, ...additions]);
+    setAISuggestions((previous) => previous.filter((suggestion) => !suggestion.accepted));
+    showToast('success', 'Đã đưa gợi ý AI vào bản nháp. Nhấn Lưu quan hệ để xác nhận.');
+  }, [isReadOnly, aiSuggestions, relTypeOptions, relations, showToast]);
 
   const handleCreateEntity = useCallback(async (label: LabelOption) => {
     if (isReadOnly || !taskId || !task || !selection) return;
@@ -777,6 +897,9 @@ export default function RelationWorkspace() {
           start_offset: Math.min(head.start, tail.start),
           end_offset: Math.max(head.end, tail.end),
           selected_text: `${head.text} -> ${tail.text}`,
+          is_ai_assisted: rel.isAiAssisted ?? false,
+          ai_model_name: rel.aiModelName,
+          ai_confidence: rel.aiConfidence,
         };
       });
 
@@ -1084,20 +1207,30 @@ export default function RelationWorkspace() {
                   </div>
                   <div className="flex items-center gap-2">
                     {workspaceStep === 'relations' && (
-                      <button
-                        onClick={() => {
-                          setWorkspaceStep('entities');
-                          setSelectedHead(null);
-                          setSelectedTail(null);
-                          setSelectedRelLabelId('');
-                          setEditingRelId(null);
-                        }}
-                        disabled={saving || isReadOnly}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-200 text-surface-600 hover:bg-surface-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                      >
-                        <ChevronLeft className="w-3.5 h-3.5" />
-                        NER label
-                      </button>
+                      <>
+                        <button
+                          onClick={() => {
+                            setWorkspaceStep('entities');
+                            setSelectedHead(null);
+                            setSelectedTail(null);
+                            setSelectedRelLabelId('');
+                            setEditingRelId(null);
+                          }}
+                          disabled={saving || isReadOnly}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-200 text-surface-600 hover:bg-surface-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                          NER label
+                        </button>
+                        <button
+                          onClick={() => void handleSave()}
+                          disabled={saving || isReadOnly}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                          Lưu quan hệ
+                        </button>
+                      </>
                     )}
                     {workspaceStep === 'entities' && (
                       <button
@@ -1331,6 +1464,18 @@ export default function RelationWorkspace() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <AIRelationSuggestionsPanel
+              suggestions={aiSuggestions}
+              entities={entities}
+              labels={relTypeOptions}
+              loading={aiLoading}
+              disabled={isReadOnly || saving}
+              onSuggest={() => void handleRequestAISuggestions()}
+              onChange={handleChangeAISuggestion}
+              onToggleAccept={handleToggleAcceptAISuggestion}
+              onReject={handleRejectAISuggestion}
+              onAddAccepted={handleAddAcceptedAISuggestions}
+            />
             {/* HEAD / TAIL pickers */}
             <div className="space-y-2">
               {[
@@ -1474,6 +1619,11 @@ export default function RelationWorkspace() {
                             >
                               {rel.relationType}
                             </span>
+                            {rel.isAiAssisted && (
+                              <span className="text-[9px] font-bold uppercase tracking-wide text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                AI
+                              </span>
+                            )}
                             <div className="h-px flex-1 min-w-4" style={{ backgroundColor: rel.color }} />
                           </div>
                         </div>

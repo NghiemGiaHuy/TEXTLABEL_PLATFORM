@@ -286,6 +286,8 @@ export interface Annotation {
   selected_text: string;
   created_by: string;
   is_ai_generated: boolean;
+  is_ai_assisted: boolean;
+  ai_model_name: string | null;
   ai_confidence: number | null;
   created_at: string;
   updated_at: string;
@@ -332,6 +334,81 @@ export interface CreateAnnotationPayload {
   start_offset: number;
   end_offset: number;
   selected_text: string;
+  is_ai_assisted?: boolean;
+  ai_model_name?: string;
+  ai_confidence?: number | null;
+}
+
+export type AISuggestTaskType =
+  | 'text_classification'
+  | 'ner'
+  | 'relation_extraction';
+
+export interface AISuggestEntityPayload {
+  id?: string;
+  text: string;
+  label?: string;
+  start?: number;
+  end?: number;
+}
+
+export interface AISuggestPayload {
+  task_type: AISuggestTaskType;
+  text: string;
+  labels: string[];
+  entities?: AISuggestEntityPayload[];
+}
+
+export interface AIClassificationSuggestion {
+  label: string;
+  confidence: number;
+}
+
+export interface AINERSuggestion {
+  text: string;
+  label: string;
+  start: number;
+  end: number;
+  confidence: number;
+}
+
+export interface AIRelationSuggestion {
+  head: string;
+  tail: string;
+  relation: string;
+  confidence: number;
+  head_id?: string | null;
+  tail_id?: string | null;
+}
+
+export interface AISuggestResponse {
+  task_type: AISuggestTaskType;
+  model_name: string;
+  suggestions: Array<
+    AIClassificationSuggestion | AINERSuggestion | AIRelationSuggestion
+  >;
+}
+
+export type EditableAIWorkspaceSuggestion =
+  | (AIClassificationSuggestion & {
+      id: string;
+      task_type: 'text_classification';
+      accepted: boolean;
+      model_name: string;
+    })
+  | (AINERSuggestion & {
+      id: string;
+      task_type: 'ner';
+      accepted: boolean;
+      model_name: string;
+    });
+
+export interface EditableAIRelationSuggestion extends AIRelationSuggestion {
+  id: string;
+  head_id: string;
+  tail_id: string;
+  accepted: boolean;
+  model_name: string;
 }
 
 // ─── Label Management ────────────────────────────────────────

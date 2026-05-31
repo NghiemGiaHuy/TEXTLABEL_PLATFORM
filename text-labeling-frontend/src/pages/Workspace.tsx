@@ -31,9 +31,11 @@ import { buildApiUrl } from '../api/apiConfig';
 import { useAuthStore } from '../store/authStore';
 import { useToast } from '../components/toastContext';
 import { useConfirm } from '../components/ConfirmDialog';
+import AISuggestionsPanel from '../components/AISuggestionsPanel';
 import type {
   Annotation,
   AnnotationSampleResponse,
+  EditableAIWorkspaceSuggestion,
   LabelOption,
   TaskDetail,
 } from '../types';
@@ -303,6 +305,8 @@ export default function Workspace() {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [doneLoading, setDoneLoading] = useState(false);
   const [isSingleLabel, setIsSingleLabel] = useState(false);
+  const [aiSuggestions, setAISuggestions] = useState<EditableAIWorkspaceSuggestion[]>([]);
+  const [aiLoading, setAILoading] = useState(false);
 
   const fetchMyTaskInfo = useCallback(async (tid: string): Promise<TaskDetail | null> => {
     try {
@@ -341,7 +345,7 @@ export default function Workspace() {
     setLoading(true);
     setError('');
     try {
-      let taskDetail = projectIdParam
+      const taskDetail = projectIdParam
         ? await annotationApi.getTask(projectIdParam, taskId).then((detail) => ({ ...detail, status: detail.task_status ?? detail.status }))
         : await fetchMyTaskInfo(taskId);
       if (!taskDetail) {
@@ -386,7 +390,7 @@ export default function Workspace() {
     } finally {
       setLoading(false);
     }
-  }, [taskId, projectIdParam, explicitViewMode, user?.id, isAdmin, fetchMyTaskInfo, loadSample]);
+  }, [taskId, projectIdParam, explicitViewMode, user, isAdmin, fetchMyTaskInfo, loadSample]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadTask(); }, 0);
@@ -397,6 +401,7 @@ export default function Workspace() {
     if (!taskId) return;
     const sampleId = taskDetail.task_samples[index]?.id;
     if (!sampleId) return;
+    setAISuggestions([]);
     setCurrentSampleIndex(index);
     await loadSample(taskId, sampleId);
   }, [taskId, loadSample]);
@@ -415,6 +420,148 @@ export default function Workspace() {
     !canEditTask ||
     isSubmitted ||
     (task?.status === 'rework' && currentSampleStatus === 'approved');
+
+  // ── Ephemeral AI suggestions ────────────────────────────────
+  const handleRequestAISuggestions = useCallback(async () => {
+    if (isReadOnly || !sampleData || !task) return;
+    const taskType = task.annotation_type === 'text_classification'
+      ? 'text_classification'
+      : 'ner';
+    setAILoading(true);
+    try {
+      const response = await annotationApi.suggestByAI({
+        task_type: taskType,
+        text: sampleData.content,
+        labels: sampleData.labels.map((label) => label.name),
+      });
+      const now = Date.now();
+      const suggestions: EditableAIWorkspaceSuggestion[] = taskType === 'text_classification'
+        ? response.suggestions.flatMap((suggestion, index) =>
+            'label' in suggestion && !('start' in suggestion)
+              ? [{
+                  ...suggestion,
+                  id: `ai-classification-${now}-${index}`,
+                  task_type: 'text_classification' as const,
+                  accepted: false,
+                  model_name: response.model_name,
+                }]
+              : []
+          )
+        : response.suggestions.flatMap((suggestion, index) =>
+            'label' in suggestion && 'start' in suggestion && 'end' in suggestion
+              ? [{
+                  ...suggestion,
+                  id: `ai-ner-${now}-${index}`,
+                  task_type: 'ner' as const,
+                  accepted: false,
+                  model_name: response.model_name,
+                }]
+              : []
+          );
+      setAISuggestions(suggestions);
+      if (suggestions.length === 0) {
+        showToast('info', 'Gemini không tìm thấy gợi ý phù hợp');
+      }
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      showToast('error', e.response?.data?.detail || 'Không thể lấy gợi ý AI');
+    } finally {
+      setAILoading(false);
+    }
+  }, [isReadOnly, sampleData, task, showToast]);
+
+  const handleChangeAISuggestion = useCallback((
+    id: string,
+    patch: Partial<EditableAIWorkspaceSuggestion>
+  ) => {
+    setAISuggestions((previous) => previous.map((suggestion) =>
+      suggestion.id === id
+        ? { ...suggestion, ...patch } as EditableAIWorkspaceSuggestion
+        : suggestion
+    ));
+  }, []);
+
+  const handleToggleAcceptAISuggestion = useCallback((id: string) => {
+    setAISuggestions((previous) => previous.map((suggestion) =>
+      suggestion.id === id
+        ? { ...suggestion, accepted: !suggestion.accepted }
+        : suggestion
+    ));
+  }, []);
+
+  const handleRejectAISuggestion = useCallback((id: string) => {
+    setAISuggestions((previous) => previous.filter((suggestion) => suggestion.id !== id));
+  }, []);
+
+  const handleSaveAISuggestions = useCallback(async () => {
+    if (isReadOnly || !sampleData || !taskId || !task) return;
+    const sampleId = task.task_samples[currentSampleIndex]?.id;
+    if (!sampleId) return;
+    let accepted = aiSuggestions.filter((suggestion) => suggestion.accepted);
+    if (isSingleLabel && task.annotation_type === 'text_classification') {
+      accepted = accepted.slice(0, 1);
+    }
+    if (accepted.length === 0) return;
+
+    setSaving(true);
+    try {
+      if (isSingleLabel && task.annotation_type === 'text_classification') {
+        for (const annotation of sampleData.annotations) {
+          await annotationApi.deleteAnnotation(taskId, sampleId, annotation.id);
+        }
+      }
+
+      const existingKeys = new Set(
+        isSingleLabel && task.annotation_type === 'text_classification'
+          ? []
+          : sampleData.annotations.map((annotation) =>
+              `${annotation.label_id}:${annotation.start_offset}:${annotation.end_offset}`
+            )
+      );
+      for (const suggestion of accepted) {
+        const label = sampleData.labels.find((option) => option.name === suggestion.label);
+        if (!label) throw new Error(`Unknown label: ${suggestion.label}`);
+        const start = suggestion.task_type === 'ner' ? suggestion.start : 0;
+        const end = suggestion.task_type === 'ner' ? suggestion.end : sampleData.content.length;
+        const selectedText = suggestion.task_type === 'ner'
+          ? sampleData.content.slice(start, end)
+          : sampleData.content.slice(0, 5000);
+        if (start < 0 || end <= start || end > sampleData.content.length || !selectedText) {
+          throw new Error('AI suggestion offsets are invalid');
+        }
+        const key = `${label.id}:${start}:${end}`;
+        if (existingKeys.has(key)) continue;
+        await annotationApi.createAnnotation(taskId, sampleId, {
+          label_id: label.id,
+          start_offset: start,
+          end_offset: end,
+          selected_text: selectedText,
+          is_ai_assisted: true,
+          ai_model_name: suggestion.model_name,
+          ai_confidence: suggestion.confidence,
+        });
+        existingKeys.add(key);
+      }
+      setAISuggestions((previous) => previous.filter((suggestion) => !suggestion.accepted));
+      await loadSample(taskId, sampleId);
+      showToast('success', 'Đã lưu gợi ý AI được chấp nhận');
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } }; message?: string };
+      showToast('error', e.response?.data?.detail || e.message || 'Không thể lưu gợi ý AI');
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    isReadOnly,
+    sampleData,
+    taskId,
+    task,
+    currentSampleIndex,
+    aiSuggestions,
+    isSingleLabel,
+    loadSample,
+    showToast,
+  ]);
 
   // ── Annotation handlers ─────────────────────────────────────
   const handleCreateAnnotation = useCallback(async (label: LabelOption) => {
@@ -736,6 +883,9 @@ export default function Workspace() {
                           >
                             <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ann.label_color || '#f59e0b' }} />
                             {ann.label_name || 'Nhãn'}
+                            {ann.is_ai_assisted && (
+                              <span className="text-[9px] uppercase tracking-wide opacity-70">AI</span>
+                            )}
                           </span>
                         ))}
                       </div>
@@ -765,6 +915,19 @@ export default function Workspace() {
 
           {/* RIGHT: Label selector */}
           <div className={`w-full xl:shrink-0 bg-white border-t xl:border-t-0 xl:border-l border-surface-200 flex flex-col transition-[width] duration-200 ${sidebarOpen ? 'xl:w-64' : 'xl:w-80'}`}>
+            <AISuggestionsPanel
+              suggestions={aiSuggestions}
+              labels={sampleData?.labels ?? []}
+              sourceText={sampleData?.content ?? ''}
+              loading={aiLoading}
+              saving={saving}
+              disabled={isReadOnly || !sampleData || (sampleData?.labels.length ?? 0) === 0}
+              onSuggest={() => void handleRequestAISuggestions()}
+              onChange={handleChangeAISuggestion}
+              onToggleAccept={handleToggleAcceptAISuggestion}
+              onReject={handleRejectAISuggestion}
+              onSave={() => void handleSaveAISuggestions()}
+            />
             <div className="px-4 py-3 border-b border-surface-100">
               <div className="flex items-center justify-between">
                 <div>
@@ -987,6 +1150,19 @@ export default function Workspace() {
 
         {/* RIGHT: Entity labels + entity list */}
         <div className={`w-full xl:shrink-0 bg-white border-t xl:border-t-0 xl:border-l border-surface-200 flex flex-col transition-[width] duration-200 ${sidebarOpen ? 'xl:w-72' : 'xl:w-[360px]'}`}>
+          <AISuggestionsPanel
+            suggestions={aiSuggestions}
+            labels={sampleData?.labels ?? []}
+            sourceText={sampleData?.content ?? ''}
+            loading={aiLoading}
+            saving={saving}
+            disabled={isReadOnly || !sampleData || (sampleData?.labels.length ?? 0) === 0}
+            onSuggest={() => void handleRequestAISuggestions()}
+            onChange={handleChangeAISuggestion}
+            onToggleAccept={handleToggleAcceptAISuggestion}
+            onReject={handleRejectAISuggestion}
+            onSave={() => void handleSaveAISuggestions()}
+          />
           {/* Label buttons */}
           <div className="px-4 pt-4 pb-3 border-b border-surface-100">
             <div className="flex items-center justify-between mb-3">
@@ -1289,6 +1465,11 @@ function NEREntityItem({
       <span className="flex-1 min-w-0 text-xs text-surface-700 font-medium truncate">
         "{ann.selected_text}"
       </span>
+      {ann.is_ai_assisted && (
+        <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+          AI
+        </span>
+      )}
 
       {/* Delete */}
       {!isReadOnly && (

@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     MAIL_FROM: str = "noreply@textlabeling.com"
 
+    # --- Gemini AI Suggestions ---
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_TIMEOUT_SECONDS: float = 25.0
+
     # --- CORS ---
     CORS_ORIGINS: List[str] = [
         "http://localhost:5173",
