@@ -169,14 +169,14 @@ class AISuggestionService:
 
         if request.task_type == "ner":
             envelope = _NEREnvelope.model_validate(payload)
+            result = []
             for suggestion in envelope.suggestions:
                 if suggestion.label not in labels:
                     self._invalid_suggestion("NER label is not configured")
-                if suggestion.start >= suggestion.end or suggestion.end > len(request.text):
-                    self._invalid_suggestion("NER offsets are outside the source text")
-                if request.text[suggestion.start:suggestion.end] != suggestion.text:
-                    self._invalid_suggestion("NER text does not match its offsets")
-            return [item.model_dump() for item in envelope.suggestions]
+                result.append(
+                    self._normalized_ner_suggestion(request.text, suggestion).model_dump()
+                )
+            return result
 
         envelope = _RelationEnvelope.model_validate(payload)
         entity_by_id = {entity["id"]: entity for entity in entities}
@@ -220,8 +220,9 @@ class AISuggestionService:
         elif request.task_type == "ner":
             task = (
                 "Extract named entities. Use zero-based start offsets and exclusive end "
-                "offsets against the exact source text. The entity text must exactly equal "
-                "source_text[start:end]. Return zero or more suggestions. "
+                "offsets against the decoded source text value. Do not count JSON syntax "
+                "or escape characters around the source text. The entity text must exactly "
+                "equal source_text[start:end]. Return zero or more suggestions. "
             )
         else:
             task = (
@@ -299,6 +300,49 @@ class AISuggestionService:
                 }
             )
         return result
+
+    def _normalized_ner_suggestion(
+        self, source_text: str, suggestion: AINERSuggestion
+    ) -> AINERSuggestion:
+        if (
+            suggestion.start < suggestion.end <= len(source_text)
+            and source_text[suggestion.start:suggestion.end] == suggestion.text
+        ):
+            return suggestion
+
+        if not suggestion.text:
+            self._invalid_suggestion("NER text is empty")
+
+        matching_starts = []
+        search_from = 0
+        while True:
+            start = source_text.find(suggestion.text, search_from)
+            if start == -1:
+                break
+            matching_starts.append(start)
+            search_from = start + 1
+
+        if not matching_starts:
+            self._invalid_suggestion("NER text does not occur in the source text")
+
+        start = min(
+            matching_starts,
+            key=lambda candidate: (
+                abs(candidate - suggestion.start)
+                + abs(candidate + len(suggestion.text) - suggestion.end)
+            ),
+        )
+        logger.info(
+            "Corrected Gemini NER offsets for %r from [%s:%s] to [%s:%s]",
+            suggestion.text,
+            suggestion.start,
+            suggestion.end,
+            start,
+            start + len(suggestion.text),
+        )
+        return suggestion.model_copy(
+            update={"start": start, "end": start + len(suggestion.text)}
+        )
 
     def _invalid_suggestion(self, reason: str) -> None:
         raise HTTPException(
