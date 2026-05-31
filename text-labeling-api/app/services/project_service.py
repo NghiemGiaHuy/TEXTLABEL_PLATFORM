@@ -213,6 +213,7 @@ class ProjectService:
         self,
         project_id: UUID,
         current_user: User,
+        code: Optional[str] = None,
         name: Optional[str] = None,
         description: Optional[str] = None,
         objective: Optional[str] = None,
@@ -227,6 +228,17 @@ class ProjectService:
         if project.status == ProjectStatus.ARCHIVED:
             raise BadRequestException("Cannot edit an archived project")
 
+        if code is not None:
+            project_code = code.upper()
+            existing = await self.db.execute(
+                select(Project.id).where(
+                    Project.code == project_code,
+                    Project.id != project_id,
+                )
+            )
+            if existing.scalar_one_or_none():
+                raise ConflictException(f"Project code '{project_code}' is already taken")
+            project.code = project_code
         if name is not None:
             project.name = name
         if description is not None:

@@ -111,6 +111,7 @@ async def update_project(
     return await service.update_project(
         project_id=project_id,
         current_user=current_user,
+        code=body.code,
         name=body.name,
         description=body.description,
         objective=body.objective,

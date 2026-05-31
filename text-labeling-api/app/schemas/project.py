@@ -24,6 +24,7 @@ class CreateProjectRequest(BaseModel):
 
 
 class UpdateProjectRequest(BaseModel):
+    code: Optional[str] = Field(None, max_length=20, pattern=r'^[A-Za-z0-9\-_]+$')
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     objective: Optional[str] = None
