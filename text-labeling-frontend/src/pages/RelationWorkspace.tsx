@@ -1385,7 +1385,7 @@ export default function RelationWorkspace() {
         </div>
 
         {/* RIGHT: Relation editor */}
-        <div className={`w-full xl:shrink-0 bg-white border-t xl:border-t-0 xl:border-l border-surface-200 flex flex-col transition-[width] duration-200 ${sidebarOpen ? 'xl:w-72' : 'xl:w-[360px]'}`}>
+        <div className={`w-full xl:shrink-0 min-h-0 overflow-y-auto bg-white border-t xl:border-t-0 xl:border-l border-surface-200 flex flex-col transition-[width] duration-200 ${sidebarOpen ? 'xl:w-72' : 'xl:w-[360px]'}`}>
           {workspaceStep === 'entities' ? (
             <>
               <div className="px-4 py-3 border-b border-surface-100">

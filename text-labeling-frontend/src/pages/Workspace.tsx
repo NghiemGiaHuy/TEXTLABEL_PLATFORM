@@ -914,7 +914,7 @@ export default function Workspace() {
           </div>
 
           {/* RIGHT: Label selector */}
-          <div className={`w-full xl:shrink-0 bg-white border-t xl:border-t-0 xl:border-l border-surface-200 flex flex-col transition-[width] duration-200 ${sidebarOpen ? 'xl:w-64' : 'xl:w-80'}`}>
+          <div className={`w-full xl:shrink-0 min-h-0 overflow-y-auto bg-white border-t xl:border-t-0 xl:border-l border-surface-200 flex flex-col transition-[width] duration-200 ${sidebarOpen ? 'xl:w-64' : 'xl:w-80'}`}>
             <AISuggestionsPanel
               suggestions={aiSuggestions}
               labels={sampleData?.labels ?? []}
@@ -1149,7 +1149,7 @@ export default function Workspace() {
         </div>
 
         {/* RIGHT: Entity labels + entity list */}
-        <div className={`w-full xl:shrink-0 bg-white border-t xl:border-t-0 xl:border-l border-surface-200 flex flex-col transition-[width] duration-200 ${sidebarOpen ? 'xl:w-72' : 'xl:w-[360px]'}`}>
+        <div className={`w-full xl:shrink-0 min-h-0 overflow-y-auto bg-white border-t xl:border-t-0 xl:border-l border-surface-200 flex flex-col transition-[width] duration-200 ${sidebarOpen ? 'xl:w-72' : 'xl:w-[360px]'}`}>
           <AISuggestionsPanel
             suggestions={aiSuggestions}
             labels={sampleData?.labels ?? []}
