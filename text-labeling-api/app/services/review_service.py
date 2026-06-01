@@ -22,7 +22,7 @@ from app.models.annotation import Annotation, AnnotationDraft
 from app.models.audit_log import AuditLog
 from app.models.label import Label
 from app.models.notification import NotificationType
-from app.models.project import Guideline, Project, ProjectMember, ProjectRole
+from app.models.project import Project, ProjectMember, ProjectRole
 from app.models.review import Review, ReviewResult
 from app.models.task import (
     AnnotationType,
@@ -226,13 +226,6 @@ class ReviewService:
         )
         task_obj = task.scalar_one()
 
-        # Guideline version
-        gv = await self.db.execute(
-            select(func.max(Guideline.version)).where(
-                Guideline.project_id == task_obj.project_id
-            )
-        )
-
         related_entities = []
         if task_obj.annotation_type == AnnotationType.RELATION_EXTRACTION:
             entity_result = await self.db.execute(
@@ -287,7 +280,6 @@ class ReviewService:
             "annotator_name": (
                 task_obj.assignee.full_name if task_obj.assignee else None
             ),
-            "guideline_version": gv.scalar(),
             "review_history": [
                 {
                     "id": r.id,

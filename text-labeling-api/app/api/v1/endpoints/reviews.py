@@ -75,7 +75,7 @@ async def get_review_sample(
 ):
     """
     Get full sample with annotations for review.
-    Includes annotation data, annotator info, guideline version, review history.
+    Includes annotation data, annotator info, and review history.
     """
     service = ReviewService(db)
     return await service.get_review_sample(

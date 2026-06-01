@@ -1,6 +1,6 @@
 """
 app/models/project.py
-Project, ProjectMember, and Guideline models.
+Project and ProjectMember models.
 """
 
 from typing import TYPE_CHECKING
@@ -20,7 +20,6 @@ from sqlalchemy import (
     DateTime,
     Enum as SAEnum,
     ForeignKey,
-    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -101,9 +100,6 @@ class Project(Base, UUIDMixin, TimestampMixin):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    guidelines: Mapped[List["Guideline"]] = relationship(
-        back_populates="project", cascade="all, delete-orphan"
-    )
     label_sets: Mapped[List["LabelSet"]] = relationship(  # noqa: F821
         "LabelSet", back_populates="project", cascade="all, delete-orphan"
     )
@@ -146,37 +142,3 @@ class ProjectMember(Base, UUIDMixin):
     # --- Relationships ---
     project: Mapped["Project"] = relationship(back_populates="members")
     user: Mapped["User"] = relationship("User", lazy="joined")  # noqa: F821
-
-
-# ============================================================
-# Guideline
-# ============================================================
-
-class Guideline(Base, UUIDMixin):
-    __tablename__ = "guidelines"
-
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    file_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    created_by: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False,
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        server_default=func.now(),
-        nullable=False,
-    )
-
-    # --- Relationships ---
-    project: Mapped["Project"] = relationship(back_populates="guidelines")
-    creator: Mapped["User"] = relationship(  # noqa: F821
-        "User", foreign_keys=[created_by], lazy="joined"
-    )

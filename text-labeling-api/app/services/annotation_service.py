@@ -20,7 +20,7 @@ from app.core.exceptions import (
 from app.models.annotation import Annotation, AnnotationDraft
 from app.models.label import Label, LabelSet
 from app.models.notification import NotificationType
-from app.models.project import Guideline, Project, ProjectMember, ProjectRole
+from app.models.project import Project, ProjectMember, ProjectRole
 from app.models.task import (
     AnnotationType,
     Task,
@@ -158,14 +158,6 @@ class AnnotationService:
             task.label_set_id,
         )
 
-        # Get guideline version
-        gv_result = await self.db.execute(
-            select(func.max(Guideline.version)).where(
-                Guideline.project_id == task.project_id
-            )
-        )
-        guideline_version = gv_result.scalar()
-
         return {
             "task_sample_id": ts.id,
             "data_sample_id": ts.data_sample_id,
@@ -186,7 +178,6 @@ class AnnotationService:
                 else None
             ),
             "labels": labels,
-            "guideline_version": guideline_version,
         }
 
     async def get_sample_entities(

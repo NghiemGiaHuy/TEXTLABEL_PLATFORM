@@ -136,7 +136,6 @@ For project owners:
 - Assign samples to annotators and reviewers.
 - Monitor annotation, review, and export progress.
 - Export labeled data after review.
-- Manage versioned project guidelines through backend APIs.
 
 For annotators:
 
@@ -166,7 +165,6 @@ The Text Labeling Platform includes the following main features:
 - Member management inside each project with project owner, annotator, and reviewer roles.
 - Dataset import from CSV, JSON, and JSONL files parsed in the browser and submitted to the backend as normalized inline samples.
 - Label set management with label groups, colors, shortcut keys, and required label options.
-- Versioned project guideline storage through backend APIs.
 - Task assignment using manual sample counts or round-robin distribution.
 - Annotation workspaces for text classification, NER, sequence labeling, and relation extraction.
 - Optional Gemini-backed AI suggestions for text classification, NER, and relation extraction with explicit annotator review before persistence.
@@ -252,7 +250,6 @@ The main functional requirements are:
 - Project owners can add, update, and remove project members.
 - Project owners can import browser-parsed CSV, JSON, or JSONL datasets and view dataset samples.
 - Project owners can create label sets, label groups, and labels.
-- Project owners can create versioned annotation guidelines through backend APIs.
 - Project owners can assign tasks manually or with round-robin distribution.
 - Annotators can view assigned tasks, start tasks, annotate text, save drafts, mark samples as done, and submit tasks.
 - Annotators can request, review, edit, accept, or reject Gemini-backed AI suggestions before saving annotations.
@@ -383,19 +380,7 @@ The main functional requirements are:
 | Pre-condition | The project contains annotated data. |
 | Post-condition | A JSON, JSONL, or CSV export is generated. |
 
-### 2.4.11 Manage Annotation Guidelines
-
-| Item | Description |
-| --- | --- |
-| Use case name | Manage Annotation Guidelines |
-| Actor | Project owner or administrator |
-| Brief definition | The user creates versioned annotation instructions for a project through backend APIs. |
-| Main flow | 1. The owner submits guideline content or a file URL. 2. The backend checks project-owner permission. 3. The system calculates the next guideline version. 4. The guideline version is stored. 5. Project members can retrieve the latest version. |
-| Alternative flow | If the project does not exist or the current user lacks permission, the backend rejects the request. |
-| Pre-condition | The project exists and the current user is an owner or administrator. |
-| Post-condition | A new guideline version is available through the API. |
-
-### 2.4.12 Request and Accept AI Suggestions
+### 2.4.11 Request and Accept AI Suggestions
 
 | Item | Description |
 | --- | --- |
@@ -443,7 +428,6 @@ Main entities:
 - Role and UserRole: store system-level role-based access control.
 - Project: stores project metadata such as code, name, objective, priority, status, creator, and deadline.
 - ProjectMember: stores the role of a user inside a project.
-- Guideline: stores project annotation instructions and versions.
 - Dataset: stores dataset metadata and import status.
 - DataSample: stores individual raw text samples and metadata.
 - LabelSet, LabelGroup, and Label: store annotation label configuration.
@@ -675,7 +659,6 @@ The project successfully produced a functional full-stack text labeling platform
 - Review workflow with approval, rejection, feedback, and rework.
 - Export of labeled data in JSON, JSONL, and CSV.
 - Dashboard, notification, settings, and audit log support.
-- Versioned annotation guideline storage through backend APIs.
 
 The platform provides a structured workflow that is more reliable than managing annotation tasks through spreadsheets. It separates responsibilities between project owners, annotators, reviewers, and administrators. It also records task and sample statuses, which helps teams monitor project progress.
 
@@ -705,7 +688,6 @@ Although the system implements the main workflow, several limitations remain:
 - The platform does not yet include real-time collaboration between multiple annotators on the same sample.
 - Quality metrics such as inter-annotator agreement are not yet implemented.
 - AI suggestions are on-demand aids rather than autonomous labels. They require Gemini availability, a configured API key, and human validation; batch pre-labeling and measured suggestion-quality benchmarks are not yet implemented.
-- Versioned guideline APIs exist in the backend, but a dedicated frontend editor and guideline-history screen are not yet implemented.
 - The repository does not yet include automated unit, integration, or end-to-end tests.
 - The frontend production bundle can be optimized further with code splitting.
 - The current deployment and storage model is suitable for development and small teams, but production deployment would require durable object storage, monitoring, backup, CI/CD, and stronger secrets management.
@@ -718,7 +700,6 @@ Future development can improve the system in the following directions:
 - Add inter-annotator agreement metrics and reviewer analytics.
 - Add more export formats for common machine learning frameworks.
 - Add advanced search and filtering for samples and annotations.
-- Add a frontend guideline editor, version comparison, and required guideline acknowledgement before annotation.
 - Add server-side file upload processing and durable object storage for imported datasets and generated exports.
 - Improve notification delivery through email or real-time WebSocket updates.
 - Add project-level reports for productivity, review quality, and annotation consistency.
@@ -814,7 +795,6 @@ The following snapshot distinguishes complete workflows from partial implementat
 | Project and member management | Implemented | Project metadata, project roles, owner safeguards, progress summaries, and member controls are present. |
 | Dataset import and browsing | Implemented with current-scope limitation | Frontend parses CSV, JSON, and JSONL files; backend accepts normalized inline samples. Direct backend file upload is deferred. |
 | Label configuration | Implemented | Label sets, groups, labels, colors, shortcuts, and required flags are present. |
-| Versioned guidelines | Partially implemented | Database model, service, and API endpoints are present. A dedicated frontend authoring and history workflow is deferred. |
 | Task assignment | Implemented | Manual and round-robin assignment, reviewer distribution, validation, and assignment editing controls are present. |
 | Annotation workspaces | Implemented | Text classification, NER, relation extraction, draft saving, status changes, navigation, and submission are present. |
 | AI annotation assistance | Implemented as optional assistance | Gemini-backed on-demand suggestions support classification, NER, and relations. Suggestions are validated and persist only after annotator approval. |

@@ -73,7 +73,6 @@ class ReviewSampleDetailResponse(BaseModel):
     related_entities: List[dict] = []
     draft: Optional[Dict[str, Any]] = None
     annotator_name: Optional[str] = None
-    guideline_version: Optional[int] = None
     review_history: List[ReviewResponse] = []
 
 

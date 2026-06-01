@@ -9,7 +9,6 @@ from app.api.v1.endpoints import (
     users,
     projects,
     label_sets,
-    guidelines,
     datasets,
     tasks,
     annotations,
@@ -27,7 +26,6 @@ api_router.include_router(users.router)
 api_router.include_router(users.public_router)
 api_router.include_router(projects.router)
 api_router.include_router(label_sets.router)
-api_router.include_router(guidelines.router)
 api_router.include_router(datasets.router)
 api_router.include_router(tasks.router)
 api_router.include_router(annotations.router)

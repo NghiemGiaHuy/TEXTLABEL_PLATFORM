@@ -105,7 +105,6 @@ class AnnotationSampleResponse(BaseModel):
     annotations: List[AnnotationResponse] = []
     draft: Optional[DraftResponse] = None
     labels: List[dict] = []
-    guideline_version: Optional[int] = None
 
 
 class AdjacentSamplesResponse(BaseModel):

@@ -48,7 +48,6 @@ export interface ReviewSampleDetail {
   related_entities?: ReviewAnnotation[];
   draft?: ReviewAnnotationDraft | null;
   annotator_name?: string;
-  guideline_version?: number;
   review_history: ReviewRecord[];
 }
 

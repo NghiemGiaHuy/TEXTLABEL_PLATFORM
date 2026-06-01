@@ -319,7 +319,6 @@ export interface AnnotationSampleResponse {
   annotations: Annotation[];
   draft: AnnotationDraft | null;
   labels: LabelOption[];
-  guideline_version: number | null;
 }
 
 export interface AdjacentSamplesResponse {

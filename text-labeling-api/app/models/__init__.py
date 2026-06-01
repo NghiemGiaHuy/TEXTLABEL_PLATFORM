@@ -16,7 +16,6 @@ from app.models.audit_log import AuditLog
 from app.models.project import (
     Project,
     ProjectMember,
-    Guideline,
     ProjectStatus,
     ProjectRole,
     ProjectPriority,
@@ -67,7 +66,6 @@ __all__ = [
     # Project
     "Project",
     "ProjectMember",
-    "Guideline",
     "ProjectStatus",
     "ProjectRole",
     "ProjectPriority",
