@@ -6,7 +6,7 @@ Business logic for LabelSet, LabelGroup, and Label (UC-3.2).
 from typing import List, Optional
 from uuid import UUID
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -18,6 +18,7 @@ from app.core.exceptions import (
 from app.models.audit_log import AuditLog
 from app.models.label import Label, LabelGroup, LabelSet
 from app.models.project import Project, ProjectRole
+from app.models.task import Task
 from app.models.user import RoleName, User
 
 
@@ -91,6 +92,21 @@ class LabelService:
     ) -> None:
         await self._check_project_owner(project_id, current_user)
         label_set = await self._get_label_set_or_404(label_set_id, project_id)
+        task_count = (
+            await self.db.execute(
+                select(func.count()).where(
+                    and_(
+                        Task.project_id == project_id,
+                        Task.label_set_id == label_set_id,
+                    )
+                )
+            )
+        ).scalar() or 0
+
+        if task_count:
+            raise ConflictException(
+                f"Bộ nhãn này đã được sử dụng trong {task_count} task, không thể xoá."
+            )
 
         self.db.add(
             AuditLog(

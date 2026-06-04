@@ -56,11 +56,11 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { downloadExportFile } from '../utils/exportDownload';
 
 function extractErrorMessage(err: unknown, fallback = 'Có lỗi xảy ra'): string {
-  const e = err as { response?: { data?: { detail?: unknown } } };
+  const e = err as { response?: { data?: { detail?: unknown } }; message?: string };
   const detail = e?.response?.data?.detail;
   if (Array.isArray(detail)) return detail.map((d: { msg?: string }) => d.msg || String(d)).join('; ');
   if (typeof detail === 'string') return detail;
-  if (err instanceof Error) return err.message;
+  if (err instanceof Error && err.message !== 'Network Error') return err.message;
   return fallback;
 }
 
@@ -4566,7 +4566,13 @@ function LabelsTab({
       await labelApi.deleteLabelSet(projectId, ls.id);
       onRefresh();
     } catch (err: unknown) {
-      showToast('error', extractErrorMessage(err, 'Xoá bộ nhãn thất bại'));
+      showToast(
+        'error',
+        extractErrorMessage(
+          err,
+          'Bộ nhãn này đã được sử dụng hoặc đang có dữ liệu liên quan, không thể xoá.'
+        )
+      );
     }
   };
 
