@@ -1013,6 +1013,7 @@ function ResetPasswordModal({
 }) {
   const { showToast } = useToast();
   const [newPassword, setNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -1020,6 +1021,7 @@ function ResetPasswordModal({
     if (!isOpen) return;
 
     setNewPassword('');
+    setShowNewPassword(false);
     setError('');
     setSubmitting(false);
   }, [isOpen, user?.id]);
@@ -1069,17 +1071,32 @@ function ResetPasswordModal({
         </FieldLabel>
 
         <FieldLabel label="Mật khẩu mới" required>
-          <input
-            type="password"
-            required
-            minLength={8}
-            autoFocus
-            autoComplete="new-password"
-            placeholder="Tối thiểu 8 ký tự, có chữ hoa, chữ thường và số"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            className="input-field"
-          />
+          <div className="relative">
+            <input
+              type={showNewPassword ? 'text' : 'password'}
+              required
+              minLength={8}
+              autoFocus
+              autoComplete="new-password"
+              placeholder="Tối thiểu 8 ký tự, có chữ hoa, chữ thường và số"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="input-field pr-11"
+            />
+            <button
+              type="button"
+              onClick={() => setShowNewPassword((visible) => !visible)}
+              title={showNewPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+              aria-label={showNewPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-700 transition-colors cursor-pointer"
+            >
+              {showNewPassword ? (
+                <EyeOff className="w-4 h-4" />
+              ) : (
+                <Eye className="w-4 h-4" />
+              )}
+            </button>
+          </div>
         </FieldLabel>
 
         <div className="flex items-center justify-end gap-3 pt-2">

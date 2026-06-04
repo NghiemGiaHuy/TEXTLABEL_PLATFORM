@@ -216,8 +216,8 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Remember me + Forgot password */}
-            <div className="flex items-center justify-between">
+            {/* Remember me */}
+            <div className="flex items-center">
               <label className="flex items-center gap-2 cursor-pointer select-none group">
                 <div className="relative">
                   <input
@@ -245,15 +245,6 @@ export default function Login() {
                 </span>
               </label>
 
-              <button
-                type="button"
-                className="text-sm font-medium transition-colors cursor-pointer"
-                style={{ color: '#5c7cfa' }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = '#748ffc')}
-                onMouseLeave={(e) => (e.currentTarget.style.color = '#5c7cfa')}
-              >
-                Quên mật khẩu?
-              </button>
             </div>
 
             {/* Submit */}
