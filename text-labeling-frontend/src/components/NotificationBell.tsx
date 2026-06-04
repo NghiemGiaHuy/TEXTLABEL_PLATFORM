@@ -24,6 +24,8 @@ const TYPE_CFG: Record<string, { icon: React.ElementType; color: string; bg: str
   review_complete:  { icon: CheckCircle2,  color: 'text-emerald-600', bg: 'bg-emerald-50' },
 };
 
+const PANEL_LIST_PARAMS = { limit: 20, unread_only: true } as const;
+
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const m = Math.floor(diff / 60000);
@@ -46,7 +48,7 @@ export default function NotificationBell() {
 
   const fetchNotifications = useCallback(async () => {
     try {
-      const res = await notificationApi.list({ limit: 20 });
+      const res = await notificationApi.list(PANEL_LIST_PARAMS);
       setNotifications(res.notifications);
       setUnreadCount(res.unread_count);
     } catch {
@@ -77,7 +79,7 @@ export default function NotificationBell() {
     setOpen((v) => !v);
     if (!open) {
       setLoading(true);
-      notificationApi.list({ limit: 20 }).then((res) => {
+      notificationApi.list(PANEL_LIST_PARAMS).then((res) => {
         setNotifications(res.notifications);
         setUnreadCount(res.unread_count);
       }).finally(() => setLoading(false));
@@ -87,7 +89,7 @@ export default function NotificationBell() {
   const handleClickNotification = async (n: NotificationItem) => {
     if (!n.is_read) {
       await notificationApi.markRead(n.id);
-      setNotifications((prev) => prev.map((x) => x.id === n.id ? { ...x, is_read: true } : x));
+      setNotifications((prev) => prev.filter((x) => x.id !== n.id));
       setUnreadCount((c) => Math.max(0, c - 1));
     }
     setOpen(false);
@@ -98,7 +100,7 @@ export default function NotificationBell() {
     setMarkingAll(true);
     try {
       await notificationApi.markAllRead();
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      setNotifications([]);
       setUnreadCount(0);
     } finally {
       setMarkingAll(false);

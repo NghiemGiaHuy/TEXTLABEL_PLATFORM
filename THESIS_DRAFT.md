@@ -70,11 +70,12 @@ Finally, I would like to thank my family and friends for their support during th
    2.1 Overall System Requirements  
    2.2 Non-functional Requirements  
    2.3 Functional Requirements  
-   2.4 Use Case and Scenario Description  
+   2.4 Use Case and Scenario Description (2.4.1 Diagram + 2.4.2–2.4.13 Scenarios)  
 3. Chapter III: Methodology  
    3.1 System Architecture  
    3.2 Database Design  
    3.3 Main Workflow Design  
+   3.4 Sequence Diagrams<br>
 4. Chapter IV: Implementation  
    4.1 Tools and Technical Choices  
    4.2 Backend Implementation  
@@ -244,23 +245,196 @@ AI suggestions must not silently become ground-truth labels. The backend sends s
 
 The main functional requirements are:
 
-- Users can log in, log out, refresh tokens, update their profile, change password, and reset forgotten passwords.
-- Administrators can create, list, update, lock, unlock, delete, and reset user accounts.
-- Project owners can create, update, archive, delete, and list projects.
-- Project owners can add, update, and remove project members.
-- Project owners can import browser-parsed CSV, JSON, or JSONL datasets and view dataset samples.
-- Project owners can create label sets, label groups, and labels.
-- Project owners can assign tasks manually or with round-robin distribution.
-- Annotators can view assigned tasks, start tasks, annotate text, save drafts, mark samples as done, and submit tasks.
-- Annotators can request, review, edit, accept, or reject Gemini-backed AI suggestions before saving annotations.
-- Reviewers can view a review queue, inspect submitted samples, approve or reject samples, and submit review results.
-- Project owners can export labeled data in JSON, JSONL, or CSV.
-- Users can view notifications and update notification preferences.
-- Dashboard pages can display project and progress statistics.
+- Users can log in, log out, refresh access tokens, view and update their profile, change their password, and request a forgotten password reset by email.
+- Administrators can create, list, view, update, lock, unlock, delete, and reset passwords for user accounts, and list available system roles.
+- Project owners can create, update, archive, delete, and list projects, and view detailed project information including computed progress metrics.
+- Project owners can add project members with a specified role, update an existing member's project role, and remove members from a project.
+- Project owners can import browser-parsed CSV, JSON, or JSONL datasets, view dataset detail and paginated sample lists, and delete datasets that have no assigned tasks.
+- Project owners can create, update, and delete label sets, label groups, and labels within a project.
+- Project owners can assign tasks to annotators manually or by round-robin distribution, update existing assignment configurations, reassign tasks to different annotators, update assigned reviewers, and delete unstarted tasks.
+- Annotators can view their assigned task list and personal annotation statistics, start tasks, open annotation workspaces, create, update, delete, and bulk-replace annotations, navigate between adjacent samples within a task, save drafts, mark samples as done, view rejection feedback from reviewers during rework, and submit completed tasks.
+- Annotators can request Gemini-backed AI suggestions, review returned suggestions with confidence scores, and accept, edit, or reject suggestions before saving through the standard annotation workflow.
+- Reviewers can view a review queue scoped to their assigned projects, inspect submitted samples and their annotations, approve or reject individual samples with feedback, submit final review decisions for a task, and view their personal review statistics.
+- Project owners can create data exports in JSON, JSONL, or CSV format, list and view past export records, download export data, and delete export records.
+- Users can list notifications, mark individual or all notifications as read, and view and update their notification preferences.
+- The dashboard displays recent projects with progress statistics and recent activity. A separate statistics endpoint provides annotation counts, approval rates, and daily progress over a configurable time window.
 
 ## 2.4 Use Case and Scenario Description
 
-### 2.4.1 Login
+### 2.4.1 Use Case Diagram
+
+The diagram below presents all system actors and their associated use cases. The platform defines four types of authenticated users — Administrator, Project Owner, Annotator, and Reviewer — each inheriting the common authentication, notification, and dashboard features of the base User actor. The Gemini API is modeled as an external actor that responds to on-demand annotation suggestion requests. The "Save Label" use case applies only to the Relation Extraction workspace, where the annotator explicitly confirms the NER entity step and the relation step through dedicated save actions; in the Text Classification and NER workspaces, labels are persisted immediately when selected.
+
+```plantuml
+@startuml TextLabelingPlatform_UseCases
+skinparam actorStyle awesome
+skinparam packageStyle rectangle
+skinparam usecaseBorderThickness 1.5
+skinparam linetype ortho
+left to right direction
+
+actor "User" as U
+actor "Administrator" as A
+actor "Project Owner" as PO
+actor "Annotator" as AN
+actor "Reviewer" as RV
+actor "Gemini API\n<<external>>" as AI
+
+A  -|> U
+PO -|> U
+AN -|> U
+RV -|> U
+
+rectangle "Text Labeling Platform" {
+
+  package "Authentication & Profile" {
+    (Login) as login
+    (Logout) as logout
+    (Refresh Token) as refresh
+    (View / Update Profile) as profile
+    (Change Password) as changepass
+    (Reset Forgotten Password) as resetpass
+  }
+
+  package "Notifications & Dashboard" {
+    (View Notifications) as notif
+    (Mark Notifications as Read) as markread
+    (Update Notification Preferences) as notifpref
+    (View Dashboard & Statistics) as dashboard
+  }
+
+  package "User Management" {
+    (Create User Account) as createuser
+    (List / View Users) as listusers
+    (Update User Info and Roles) as updateuser
+    (Lock / Unlock Account) as lockuser
+    (Delete User Account) as deleteuser
+    (Reset User Password) as adminreset
+  }
+
+  package "Project Management" {
+    (Create / Update / Archive Project) as manageproject
+    (Delete Project) as deleteproject
+    (View Project Progress) as viewprogress
+    (Add / Update / Remove Members) as managemembers
+  }
+
+  package "Dataset Management" {
+    (Import Dataset) as importdata
+    (View Dataset and Samples) as viewsamples
+    (Delete Dataset) as deletedataset
+  }
+
+  package "Label Configuration" {
+    (Manage Label Sets) as labelsets
+    (Manage Label Groups) as labelgroups
+    (Manage Labels) as labels
+  }
+
+  package "Task Assignment" {
+    (Assign Tasks) as assign
+    (Edit Assignment / Reassign) as reassign
+    (Delete Unstarted Task) as deletetask
+  }
+
+  package "Export" {
+    (Create Data Export) as createexport
+    (List / Download Exports) as downloadexport
+    (Delete Export) as deleteexport
+  }
+
+  package "Annotation" {
+    (View Assigned Tasks) as viewtasks
+    (Start Task) as starttask
+    (Create / Update / Delete Annotations) as annotate
+    (Navigate Between Samples) as navigate
+    (Save Label\n[Relation Workspace]) as draft
+    (Mark Sample as Done) as markdone
+    (View Rejection Feedback) as feedback
+    (Submit Task) as submittask
+  }
+
+  package "AI Assistance" {
+    (Request AI Suggestions) as aisuggest
+    (Accept / Edit / Reject Suggestions) as aireview
+  }
+
+  package "Review & QA" {
+    (View Review Queue) as queue
+    (Inspect Submitted Sample) as inspect
+    (Approve Sample) as approve
+    (Reject Sample with Feedback) as reject
+    (Submit Review Decision) as submitreview
+  }
+}
+
+' --- User (all authenticated) ---
+U --> login
+U --> logout
+U --> refresh
+U --> profile
+U --> changepass
+U --> resetpass
+U --> notif
+U --> markread
+U --> notifpref
+U --> dashboard
+
+' --- Administrator ---
+A --> createuser
+A --> listusers
+A --> updateuser
+A --> lockuser
+A --> deleteuser
+A --> adminreset
+
+' --- Project Owner ---
+PO --> manageproject
+PO --> deleteproject
+PO --> viewprogress
+PO --> managemembers
+PO --> importdata
+PO --> viewsamples
+PO --> deletedataset
+PO --> labelsets
+PO --> labelgroups
+PO --> labels
+PO --> assign
+PO --> reassign
+PO --> deletetask
+PO --> createexport
+PO --> downloadexport
+PO --> deleteexport
+
+' --- Annotator ---
+AN --> viewtasks
+AN --> starttask
+AN --> annotate
+AN --> navigate
+AN --> draft
+AN --> markdone
+AN --> feedback
+AN --> submittask
+AN --> aisuggest
+AN --> aireview
+
+' --- Reviewer ---
+RV --> queue
+RV --> inspect
+RV --> approve
+RV --> reject
+RV --> submitreview
+
+' --- External ---
+AI ..> aisuggest : <<provides response>>
+aisuggest ..> aireview : <<include>>
+
+@enduml
+```
+
+The individual use case scenarios are described in sections 2.4.2 through 2.4.13.
+
+### 2.4.2 Login
 
 | Item | Description |
 | --- | --- |
@@ -272,7 +446,7 @@ The main functional requirements are:
 | Pre-condition | The user account exists and is active. |
 | Post-condition | The user is authenticated and can access protected pages. |
 
-### 2.4.2 Manage Users
+### 2.4.3 Manage Users
 
 | Item | Description |
 | --- | --- |
@@ -284,7 +458,7 @@ The main functional requirements are:
 | Pre-condition | The current user has administrator privileges. |
 | Post-condition | User information is updated in the system. |
 
-### 2.4.3 Create Project
+### 2.4.4 Create Project
 
 | Item | Description |
 | --- | --- |
@@ -296,7 +470,7 @@ The main functional requirements are:
 | Pre-condition | The user is authenticated. |
 | Post-condition | A new project exists and is visible to the owner. |
 
-### 2.4.4 Manage Project Members
+### 2.4.5 Manage Project Members
 
 | Item | Description |
 | --- | --- |
@@ -308,7 +482,7 @@ The main functional requirements are:
 | Pre-condition | The project exists and the current user has owner rights. |
 | Post-condition | Project membership is updated. |
 
-### 2.4.5 Import Dataset
+### 2.4.6 Import Dataset
 
 | Item | Description |
 | --- | --- |
@@ -320,7 +494,7 @@ The main functional requirements are:
 | Pre-condition | The project exists and the user is a project owner. |
 | Post-condition | A ready dataset is available for task assignment. |
 
-### 2.4.6 Configure Labels
+### 2.4.7 Configure Labels
 
 | Item | Description |
 | --- | --- |
@@ -332,7 +506,7 @@ The main functional requirements are:
 | Pre-condition | The project exists. |
 | Post-condition | A label set is available for annotation tasks. |
 
-### 2.4.7 Assign Tasks
+### 2.4.8 Assign Tasks
 
 | Item | Description |
 | --- | --- |
@@ -344,7 +518,7 @@ The main functional requirements are:
 | Pre-condition | A ready dataset and at least one annotator are available. |
 | Post-condition | Tasks are created and visible to assigned annotators. |
 
-### 2.4.8 Annotate Samples
+### 2.4.9 Annotate Samples
 
 | Item | Description |
 | --- | --- |
@@ -352,11 +526,23 @@ The main functional requirements are:
 | Actor | Annotator |
 | Brief definition | The annotator labels assigned text samples. |
 | Main flow | 1. The annotator opens an assigned task. 2. The system starts the task if needed. 3. The annotator selects labels or text spans according to the task type. 4. The system creates, updates, or deletes annotation records. 5. The annotator marks samples as done. 6. After all samples are done, the annotator submits the task. |
-| Alternative flow | The annotator can save a draft and continue later. If some samples are unfinished, the system prevents submission. |
+| Alternative flow | If some samples are unfinished, the system prevents submission and displays a warning. |
 | Pre-condition | The task is assigned to the annotator. |
 | Post-condition | The task is submitted for review. |
 
-### 2.4.9 Review Annotations
+### 2.4.10 Save Label
+
+| Item | Description |
+| --- | --- |
+| Use case name | Save Label |
+| Actor | Annotator |
+| Brief definition | In the Relation Extraction workspace, the annotator explicitly saves labeling progress at each step of the two-step workflow. This use case applies only to Relation Extraction tasks; in Text Classification and NER workspaces, labels are persisted immediately when selected. |
+| Main flow | 1. The annotator opens a Relation Extraction task. 2. In the entity step, the annotator selects text spans and assigns NER labels. 3. The annotator clicks "Lưu NER label". The system saves the entity annotations and records the step state. 4. The workspace advances to the relation step. 5. The annotator selects entity pairs and assigns relation types. 6. The annotator clicks "Lưu quan hệ". The system saves the relation annotations and updates the step state. |
+| Alternative flow | If the annotator clicks "Quay lại NER label", the system resets the relation step and reverts to the entity step, clearing any unsaved relations. If saving fails, an error message is shown and no data is written. |
+| Pre-condition | The task type is Relation Extraction and the task is assigned to the annotator. |
+| Post-condition | Entity and relation annotations are persisted. The saved step state allows the annotator to resume from the correct step if they navigate to another sample and return. |
+
+### 2.4.11 Review Annotations
 
 | Item | Description |
 | --- | --- |
@@ -368,7 +554,7 @@ The main functional requirements are:
 | Pre-condition | The task has been submitted and the current user has review access. |
 | Post-condition | The task becomes approved or rework. |
 
-### 2.4.10 Export Labeled Data
+### 2.4.12 Export Labeled Data
 
 | Item | Description |
 | --- | --- |
@@ -380,7 +566,7 @@ The main functional requirements are:
 | Pre-condition | The project contains annotated data. |
 | Post-condition | A JSON, JSONL, or CSV export is generated. |
 
-### 2.4.11 Request and Accept AI Suggestions
+### 2.4.13 Request and Accept AI Suggestions
 
 | Item | Description |
 | --- | --- |
@@ -491,6 +677,218 @@ flowchart TD
     H -->|Rejected| I[Rework]
     I --> F
     H -->|Approved| J[Export Data]
+```
+
+## 3.4 Sequence Diagrams
+
+The following sequence diagrams describe the interactions between users, the frontend, the backend API, the database, and the optional Gemini service in the main system workflows.
+
+### 3.4.1 Login Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI as React Frontend
+    participant API as FastAPI Backend
+    participant DB as PostgreSQL
+
+    User->>UI: Enter email and password
+    UI->>API: POST /auth/login
+    API->>DB: Find user account by email
+    DB-->>API: Account data and password hash
+    API->>API: Verify password and account status
+    alt Valid credentials
+        API->>DB: Store hashed refresh token
+        API-->>UI: Access token, refresh token, and user profile
+        UI-->>User: Redirect to dashboard
+    else Invalid credentials or locked account
+        API->>DB: Update failed-login tracking when needed
+        API-->>UI: Authentication error
+        UI-->>User: Display error message
+    end
+```
+
+### 3.4.2 Dataset Import Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    actor Owner as Project Owner
+    participant UI as React Frontend
+    participant API as FastAPI Backend
+    participant DB as PostgreSQL
+
+    Owner->>UI: Select CSV, JSON, or JSONL file
+    UI->>UI: Parse file in browser
+    UI->>UI: Normalize valid text samples
+    UI->>API: POST project dataset with inline samples
+    API->>API: Check project-owner permission
+    API->>API: Validate source format and sample content
+    alt At least one valid sample exists
+        API->>DB: Create dataset and data-sample records
+        API->>DB: Mark dataset as ready
+        API-->>UI: Import result and sample counts
+        UI-->>Owner: Display successful import
+    else No valid sample exists
+        API-->>UI: Import validation error
+        UI-->>Owner: Display error message
+    end
+```
+
+### 3.4.3 Task Assignment Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    actor Owner as Project Owner
+    participant UI as React Frontend
+    participant API as FastAPI Backend
+    participant DB as PostgreSQL
+
+    Owner->>UI: Select dataset, labels, task type, and members
+    Owner->>UI: Choose manual or round-robin assignment
+    UI->>API: POST project task assignments
+    API->>API: Check project-owner permission
+    API->>DB: Load ready dataset and unassigned samples
+    API->>DB: Validate annotators, reviewers, and label set
+    alt Assignment data is valid
+        API->>DB: Create task records
+        API->>DB: Create task-sample records
+        API->>DB: Create assignment notifications
+        API-->>UI: Created task assignments
+        UI-->>Owner: Display assignment list
+    else Assignment cannot be created
+        API-->>UI: Validation error
+        UI-->>Owner: Display error message
+    end
+```
+
+### 3.4.4 Annotation Submission Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    actor Annotator
+    participant UI as Annotation Workspace
+    participant API as FastAPI Backend
+    participant DB as PostgreSQL
+
+    Annotator->>UI: Open assigned task
+    UI->>API: Start task if status is todo
+    API->>DB: Update task status to in_progress
+    loop For each assigned sample
+        UI->>API: Request sample and configured labels
+        API->>DB: Load sample, annotations, and draft
+        API-->>UI: Sample workspace data
+        Annotator->>UI: Create or update annotations
+        UI->>API: Save annotations or draft
+        API->>DB: Persist annotation data
+        Annotator->>UI: Mark sample as done
+        UI->>API: Update sample status
+        API->>DB: Save done status
+    end
+    Annotator->>UI: Submit completed task
+    UI->>API: Submit task
+    alt All samples are done
+        API->>DB: Mark task and samples as submitted
+        API->>DB: Create reviewer notifications
+        API-->>UI: Submission successful
+    else Some samples are unfinished
+        API-->>UI: Submission blocked
+        UI-->>Annotator: Display unfinished-sample warning
+    end
+```
+
+### 3.4.5 AI Suggestion Request and Acceptance Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    actor Annotator
+    participant UI as Annotation Workspace
+    participant API as FastAPI Backend
+    participant AI as Gemini API
+    participant DB as PostgreSQL
+
+    Annotator->>UI: Request AI suggestions
+    UI->>API: Send task type, text, labels, and optional entities
+    API->>API: Validate request and configured labels
+    API->>AI: Request structured suggestions
+    AI-->>API: Return structured response
+    API->>API: Validate labels, confidence, offsets, and relation endpoints
+    alt Valid suggestions returned
+        API-->>UI: Temporary suggestions with confidence scores
+        UI-->>Annotator: Display suggestions for review
+        Annotator->>UI: Accept, edit, or reject suggestions
+        opt Annotator saves accepted items
+            UI->>API: Save annotations with AI-assistance metadata
+            API->>DB: Persist annotator-approved annotations
+        end
+    else Provider or validation error
+        API-->>UI: Error or empty suggestion result
+        UI-->>Annotator: Display message without saving labels
+    end
+```
+
+### 3.4.6 Review Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    actor Reviewer
+    participant UI as Review Workspace
+    participant API as FastAPI Backend
+    participant DB as PostgreSQL
+
+    Reviewer->>UI: Open review queue
+    UI->>API: Request submitted samples
+    API->>DB: Load reviewer-accessible submitted samples
+    API-->>UI: Review queue
+    loop For each submitted sample
+        Reviewer->>UI: Open sample
+        UI->>API: Request annotations and review history
+        API->>DB: Load review workspace data
+        API-->>UI: Sample, annotations, and history
+        Reviewer->>UI: Approve or reject with feedback
+        UI->>API: Save review decision
+        API->>DB: Persist review result
+    end
+    Reviewer->>UI: Submit review result
+    UI->>API: Finalize task review
+    alt Every sample is approved
+        API->>DB: Mark task as approved
+        API-->>UI: Review completed
+    else At least one sample is rejected
+        API->>DB: Mark task as rework
+        API->>DB: Create rework notification
+        API-->>UI: Task returned for correction
+    end
+```
+
+### 3.4.7 Export Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    actor Owner as Project Owner
+    participant UI as React Frontend
+    participant API as FastAPI Backend
+    participant DB as PostgreSQL
+
+    Owner->>UI: Open export modal
+    Owner->>UI: Select format and filter mode
+    UI->>API: POST project export request
+    API->>API: Check project-owner permission
+    alt Filter is approved_only
+        API->>DB: Collect samples from fully approved task groups
+    else Filter is all
+        API->>DB: Collect matching assigned samples
+    end
+    alt Matching records exist
+        API->>API: Generate JSON, JSONL, or CSV export
+        API->>DB: Save export history record
+        API-->>UI: Export metadata
+        UI->>API: Request export download data
+        API-->>UI: Export records
+        UI-->>Owner: Download generated file
+    else No records match the filter
+        API-->>UI: No exportable data error
+        UI-->>Owner: Display error message
+    end
 ```
 
 ---
@@ -676,7 +1074,7 @@ The repository was reviewed and checked locally on May 31, 2026. The following c
 
 The frontend build reported that the main JavaScript chunk is larger than 500 kB after minification and that a dynamic Axios-client import does not create a separate chunk because the same module is also imported statically. These warnings do not block the current build but identify an optimization opportunity.
 
-No automated unit, integration, or end-to-end test suite was found in the current repository. The AI suggestion flow was reviewed statically and compiled successfully, but a live Gemini response was not included in this verification because it depends on an external API key and network service.
+The repository includes a pytest test file (`tests/test_ai_suggestion_service.py`) with three unit test cases that cover NER offset correction and output validation in the AI suggestion service. No frontend, integration, or end-to-end test suite was found. The AI suggestion flow was reviewed statically and compiled successfully, but a live Gemini response was not included in this verification because it depends on an external API key and network service.
 
 ## 5.3 Limitations
 
@@ -688,7 +1086,7 @@ Although the system implements the main workflow, several limitations remain:
 - The platform does not yet include real-time collaboration between multiple annotators on the same sample.
 - Quality metrics such as inter-annotator agreement are not yet implemented.
 - AI suggestions are on-demand aids rather than autonomous labels. They require Gemini availability, a configured API key, and human validation; batch pre-labeling and measured suggestion-quality benchmarks are not yet implemented.
-- The repository does not yet include automated unit, integration, or end-to-end tests.
+- The repository includes limited backend unit tests for the AI suggestion service but does not yet include frontend, integration, or end-to-end test suites.
 - The frontend production bundle can be optimized further with code splitting.
 - The current deployment and storage model is suitable for development and small teams, but production deployment would require durable object storage, monitoring, backup, CI/CD, and stronger secrets management.
 
@@ -703,7 +1101,7 @@ Future development can improve the system in the following directions:
 - Add server-side file upload processing and durable object storage for imported datasets and generated exports.
 - Improve notification delivery through email or real-time WebSocket updates.
 - Add project-level reports for productivity, review quality, and annotation consistency.
-- Add automated backend, frontend, integration, and end-to-end test suites.
+- Expand the existing backend test suite and add frontend, integration, and end-to-end test coverage.
 - Reduce the frontend bundle size with route-level code splitting.
 - Improve deployment with CI/CD, monitoring, backup, and production-grade secrets management.
 
@@ -756,20 +1154,21 @@ Insert screenshots of the following pages:
 - Settings page.
 - Export modal and exported file example.
 
-## Appendix B: Suggested Figures
+## Appendix B: Figure Checklist
 
-Suggested figures to include in the final Word/PDF version:
+The following figures are included as diagrams in the thesis and should be rendered in the final Word/PDF version:
 
-- System architecture diagram.
-- Database entity relationship diagram.
-- Main annotation workflow diagram.
-- Login sequence diagram.
-- Dataset import sequence diagram.
-- Task assignment sequence diagram.
-- Annotation submission sequence diagram.
-- AI suggestion request and acceptance sequence diagram.
-- Review sequence diagram.
-- Export sequence diagram.
+- Use case diagram (Chapter II, Section 2.4.1) — rendered with PlantUML.
+- System architecture diagram (Chapter III) — rendered with Mermaid.
+- Database entity relationship diagram (Chapter III) — rendered with Mermaid.
+- Main annotation workflow diagram (Chapter III) — rendered with Mermaid.
+- Login sequence diagram (Chapter III) — rendered with Mermaid.
+- Dataset import sequence diagram (Chapter III) — rendered with Mermaid.
+- Task assignment sequence diagram (Chapter III) — rendered with Mermaid.
+- Annotation submission sequence diagram (Chapter III) — rendered with Mermaid.
+- AI suggestion request and acceptance sequence diagram (Chapter III) — rendered with Mermaid.
+- Review sequence diagram (Chapter III) — rendered with Mermaid.
+- Export sequence diagram (Chapter III) — rendered with Mermaid.
 
 ## Appendix C: Suggested Tables
 
@@ -801,4 +1200,4 @@ The following snapshot distinguishes complete workflows from partial implementat
 | Review and rework | Implemented | Queue, approval, rejection feedback, review submission, and rework flow are present. |
 | Notifications, dashboard, and settings | Implemented | Dashboard statistics, recent activity, polling notification bell, read state, and notification preferences are present. |
 | Export | Implemented with current-scope limitation | JSON, JSONL, and CSV exports are present. Generated files use temporary local storage in the current backend. |
-| Automated testing and production operations | Deferred | Static checks and health verification pass, but automated test suites, durable storage, monitoring, backup, and CI/CD remain future work. |
+| Automated testing and production operations | Partial | Three backend unit tests for the AI suggestion service are present. Frontend, integration, and end-to-end test suites, durable storage, monitoring, backup, and CI/CD remain future work. |
