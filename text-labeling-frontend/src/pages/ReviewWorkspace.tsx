@@ -953,16 +953,6 @@ export default function ReviewWorkspace() {
                         annotations={sampleDetail.annotations}
                       />
                     </div>
-                    {sampleDetail.metadata && Object.keys(sampleDetail.metadata).length > 0 && (
-                      <div className="px-6 py-3 border-t border-surface-100 bg-surface-50/60 flex items-center gap-4 flex-wrap rounded-b-2xl">
-                        {Object.entries(sampleDetail.metadata).slice(0, 5).map(([k, v]) => (
-                          <div key={k} className="flex items-center gap-1.5 text-xs text-surface-400">
-                            <span className="font-semibold text-surface-500">{k}:</span>
-                            <span>{String(v)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
