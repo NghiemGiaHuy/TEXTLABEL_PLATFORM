@@ -86,6 +86,15 @@ export const reviewApi = {
     return data;
   },
 
+  deleteReview: async (
+    taskId: string,
+    sampleId: string
+  ): Promise<void> => {
+    await axiosClient.delete(
+      `/api/v1/reviews/tasks/${taskId}/samples/${sampleId}`
+    );
+  },
+
   submitReviewTask: async (taskId: string): Promise<ReviewSubmitResult> => {
     const { data } = await axiosClient.post<ReviewSubmitResult>(
       `/api/v1/reviews/tasks/${taskId}/submit`

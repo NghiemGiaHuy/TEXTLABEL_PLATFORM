@@ -138,6 +138,31 @@ async def reject_sample(
 
 
 # ================================================================
+# DELETE REVIEW DECISION
+# ================================================================
+@router.delete(
+    "/tasks/{task_id}/samples/{task_sample_id}",
+    status_code=204,
+)
+async def delete_review(
+    task_id: UUID,
+    task_sample_id: UUID,
+    current_user: User = ReviewerRole,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Delete the latest decision for a sample before the task review is
+    submitted, then return the sample to the review queue.
+    """
+    service = ReviewService(db)
+    await service.delete_review(
+        task_id=task_id,
+        task_sample_id=task_sample_id,
+        current_user=current_user,
+    )
+
+
+# ================================================================
 # SUBMIT REVIEW (task-level final decision)
 # ================================================================
 @router.post(

@@ -28,10 +28,12 @@ import {
   ExternalLink,
   Send,
   Eye,
+  Trash2,
 } from 'lucide-react';
 import { annotationApi } from '../api/annotationApi';
 import { taskApi } from '../api/taskApi';
 import { reviewApi, type ReviewAnnotation, type ReviewSampleDetail, type ReviewRecord } from '../api/reviewApi';
+import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/toastContext';
 import { useAuthStore } from '../store/authStore';
 import type { TaskDetail } from '../types';
@@ -469,14 +471,20 @@ function ReviewBottomBar({
   currentIndex,
   total,
   pendingReviewCount,
+  canDeleteReview,
+  deleteReviewLoading,
   onBack,
+  onDeleteReview,
   onRefresh,
   onNext,
 }: {
   currentIndex: number;
   total: number;
   pendingReviewCount: number;
+  canDeleteReview: boolean;
+  deleteReviewLoading: boolean;
   onBack: () => void;
+  onDeleteReview: () => void;
   onRefresh: () => void;
   onNext: () => void;
 }) {
@@ -489,6 +497,19 @@ function ReviewBottomBar({
       >
         <ChevronLeft className="w-4 h-4" />
         Quay lại
+      </button>
+
+      <button
+        onClick={onDeleteReview}
+        disabled={!canDeleteReview || deleteReviewLoading}
+        className="flex shrink-0 items-center justify-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg border border-surface-200 text-sm font-medium text-surface-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+      >
+        {deleteReviewLoading ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <Trash2 className="w-4 h-4" />
+        )}
+        Xoá Review
       </button>
 
       <button
@@ -522,6 +543,7 @@ export default function ReviewWorkspace() {
   const [searchParams] = useSearchParams();
   const { sidebarOpen } = useOutletContext<{ sidebarOpen: boolean }>();
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const { user } = useAuthStore();
   const explicitViewMode = searchParams.get('mode') === 'view';
   const isAdmin = user?.roles?.some((role) => role.toLowerCase().includes('admin')) ?? false;
@@ -535,6 +557,7 @@ export default function ReviewWorkspace() {
   const [loading, setLoading] = useState(true);
   const [sampleLoading, setSampleLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [deleteReviewLoading, setDeleteReviewLoading] = useState(false);
   const [reviewSubmitLoading, setReviewSubmitLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -690,6 +713,35 @@ export default function ReviewWorkspace() {
     }
   }, [canReviewTask, taskId, sampleDetail, rejectFeedback, currentSampleIndex, loadSample, reloadTask, navigateSample, showToast]);
 
+  const handleDeleteReview = useCallback(async () => {
+    if (
+      !canReviewTask ||
+      task?.status !== 'submitted' ||
+      !taskId ||
+      !sampleDetail
+    ) return;
+
+    if (!await confirm(
+      'Xoá quyết định review hiện tại và đưa sample về trạng thái chờ duyệt?',
+      { title: 'Xoá Review', variant: 'danger', confirmText: 'Xoá' }
+    )) return;
+
+    setDeleteReviewLoading(true);
+    try {
+      await reviewApi.deleteReview(taskId, sampleDetail.task_sample_id);
+      await Promise.all([
+        reloadTask(),
+        loadSample(taskId, sampleDetail.task_sample_id),
+      ]);
+      showToast('success', 'Đã xoá review của sample');
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      showToast('error', e.response?.data?.detail || 'Xoá review thất bại');
+    } finally {
+      setDeleteReviewLoading(false);
+    }
+  }, [canReviewTask, task?.status, taskId, sampleDetail, confirm, loadSample, reloadTask, showToast]);
+
   const handleSubmitReview = useCallback(async () => {
     if (!canReviewTask || !taskId || !task) return;
 
@@ -772,6 +824,7 @@ export default function ReviewWorkspace() {
   };
   return (
     <div className="-m-6 flex flex-col min-h-[calc(100vh-64px)] xl:h-[calc(100vh-64px)] xl:overflow-hidden">
+      {ConfirmDialog}
       <div className="shrink-0 bg-white flex flex-col md:flex-row md:items-center md:justify-between gap-3 px-3 sm:px-5 py-3 border-b border-surface-200">
         <div className="flex items-center gap-3 min-w-0">
           <Link
@@ -932,7 +985,10 @@ export default function ReviewWorkspace() {
             currentIndex={currentSampleIndex}
             total={samples.length}
             pendingReviewCount={pendingReviewCount}
+            canDeleteReview={canReviewTask && isReviewSubmitted && isAlreadyReviewed}
+            deleteReviewLoading={deleteReviewLoading}
             onBack={() => task && currentSampleIndex > 0 && navigateSample(currentSampleIndex - 1, task)}
+            onDeleteReview={handleDeleteReview}
             onRefresh={refreshSample}
             onNext={() => task && currentSampleIndex < samples.length - 1 && navigateSample(currentSampleIndex + 1, task)}
           />

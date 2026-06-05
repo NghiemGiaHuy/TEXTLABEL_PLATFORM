@@ -385,6 +385,80 @@ class ReviewService:
         return self._build_review_response(review)
 
     # ================================================================
+    # DELETE REVIEW DECISION
+    # ================================================================
+
+    async def delete_review(
+        self,
+        task_id: UUID,
+        task_sample_id: UUID,
+        current_user: User,
+    ) -> None:
+        task = await self._check_reviewer_access(task_id, current_user)
+        if task.status != TaskStatus.SUBMITTED:
+            raise BadRequestException(
+                f"Can only delete reviews while task is submitted "
+                f"(current: {task.status.value})"
+            )
+
+        sample_result = await self.db.execute(
+            select(TaskSample).where(
+                and_(
+                    TaskSample.id == task_sample_id,
+                    TaskSample.task_id == task_id,
+                )
+            )
+        )
+        task_sample = sample_result.scalar_one_or_none()
+        if not task_sample:
+            raise NotFoundException("TaskSample not found in this task")
+        if task_sample.status not in (
+            TaskSampleStatus.APPROVED,
+            TaskSampleStatus.REJECTED,
+        ):
+            raise BadRequestException(
+                "Sample does not have a review decision to delete"
+            )
+
+        expected_result = (
+            ReviewResult.APPROVED
+            if task_sample.status == TaskSampleStatus.APPROVED
+            else ReviewResult.REJECTED
+        )
+        review_result = await self.db.execute(
+            select(Review)
+            .where(
+                and_(
+                    Review.task_sample_id == task_sample.id,
+                    Review.result == expected_result,
+                )
+            )
+            .order_by(Review.reviewed_at.desc(), Review.id.desc())
+            .limit(1)
+        )
+        review = review_result.scalar_one_or_none()
+        if not review:
+            raise NotFoundException("Review decision not found for this sample")
+
+        review_id = review.id
+        review_value = review.result.value
+        await self.db.delete(review)
+        task_sample.status = TaskSampleStatus.SUBMITTED
+        self.db.add(
+            AuditLog(
+                user_id=current_user.id,
+                action="DELETE_SAMPLE_REVIEW",
+                entity_type="task_sample",
+                entity_id=task_sample.id,
+                details={
+                    "review_id": str(review_id),
+                    "result": review_value,
+                },
+            )
+        )
+        await self.db.flush()
+
+    # ================================================================
     # REVIEWER STATS (UC-5.1)
     # ================================================================
 
