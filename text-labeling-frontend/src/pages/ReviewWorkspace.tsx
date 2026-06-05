@@ -33,7 +33,6 @@ import {
 import { annotationApi } from '../api/annotationApi';
 import { taskApi } from '../api/taskApi';
 import { reviewApi, type ReviewAnnotation, type ReviewSampleDetail, type ReviewRecord } from '../api/reviewApi';
-import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/toastContext';
 import { useAuthStore } from '../store/authStore';
 import type { TaskDetail } from '../types';
@@ -470,7 +469,6 @@ function ReviewSampleListPanel({
 function ReviewBottomBar({
   currentIndex,
   total,
-  pendingReviewCount,
   canDeleteReview,
   deleteReviewLoading,
   onBack,
@@ -480,7 +478,6 @@ function ReviewBottomBar({
 }: {
   currentIndex: number;
   total: number;
-  pendingReviewCount: number;
   canDeleteReview: boolean;
   deleteReviewLoading: boolean;
   onBack: () => void;
@@ -520,9 +517,7 @@ function ReviewBottomBar({
         Tải lại
       </button>
 
-      <div className="hidden sm:flex flex-1 items-center justify-center text-xs text-surface-400">
-        {pendingReviewCount > 0 ? `Còn ${pendingReviewCount} sample chưa duyệt` : 'Tất cả sample đã có quyết định'}
-      </div>
+      <div className="flex-1" />
 
       <button
         onClick={onNext}
@@ -543,7 +538,6 @@ export default function ReviewWorkspace() {
   const [searchParams] = useSearchParams();
   const { sidebarOpen } = useOutletContext<{ sidebarOpen: boolean }>();
   const { showToast } = useToast();
-  const { confirm, ConfirmDialog } = useConfirm();
   const { user } = useAuthStore();
   const explicitViewMode = searchParams.get('mode') === 'view';
   const isAdmin = user?.roles?.some((role) => role.toLowerCase().includes('admin')) ?? false;
@@ -721,11 +715,6 @@ export default function ReviewWorkspace() {
       !sampleDetail
     ) return;
 
-    if (!await confirm(
-      'Xoá quyết định review hiện tại và đưa sample về trạng thái chờ duyệt?',
-      { title: 'Xoá Review', variant: 'danger', confirmText: 'Xoá' }
-    )) return;
-
     setDeleteReviewLoading(true);
     try {
       await reviewApi.deleteReview(taskId, sampleDetail.task_sample_id);
@@ -740,7 +729,7 @@ export default function ReviewWorkspace() {
     } finally {
       setDeleteReviewLoading(false);
     }
-  }, [canReviewTask, task?.status, taskId, sampleDetail, confirm, loadSample, reloadTask, showToast]);
+  }, [canReviewTask, task?.status, taskId, sampleDetail, loadSample, reloadTask, showToast]);
 
   const handleSubmitReview = useCallback(async () => {
     if (!canReviewTask || !taskId || !task) return;
@@ -824,7 +813,6 @@ export default function ReviewWorkspace() {
   };
   return (
     <div className="-m-6 flex flex-col min-h-[calc(100vh-64px)] xl:h-[calc(100vh-64px)] xl:overflow-hidden">
-      {ConfirmDialog}
       <div className="shrink-0 bg-white flex flex-col md:flex-row md:items-center md:justify-between gap-3 px-3 sm:px-5 py-3 border-b border-surface-200">
         <div className="flex items-center gap-3 min-w-0">
           <Link
@@ -984,7 +972,6 @@ export default function ReviewWorkspace() {
           <ReviewBottomBar
             currentIndex={currentSampleIndex}
             total={samples.length}
-            pendingReviewCount={pendingReviewCount}
             canDeleteReview={canReviewTask && isReviewSubmitted && isAlreadyReviewed}
             deleteReviewLoading={deleteReviewLoading}
             onBack={() => task && currentSampleIndex > 0 && navigateSample(currentSampleIndex - 1, task)}
