@@ -10,12 +10,21 @@ interface EntityOption {
   label: string;
 }
 
+interface SuggestButtonProps {
+  entitiesCount: number;
+  labelsCount: number;
+  loading: boolean;
+  disabled: boolean;
+  onSuggest: () => void;
+}
+
 interface Props {
   suggestions: EditableAIRelationSuggestion[];
   entities: EntityOption[];
   labels: LabelOption[];
   loading: boolean;
   disabled: boolean;
+  showSuggestButton?: boolean;
   onSuggest: () => void;
   onChange: (
     id: string,
@@ -26,12 +35,31 @@ interface Props {
   onAddAccepted: () => void;
 }
 
+export function AIRelationSuggestButton({
+  entitiesCount,
+  labelsCount,
+  loading,
+  disabled,
+  onSuggest,
+}: SuggestButtonProps) {
+  return (
+    <button
+      onClick={onSuggest}
+      disabled={disabled || loading || entitiesCount < 2 || labelsCount === 0}
+      className="shrink-0 px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-white text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed"
+    >
+      {loading ? 'Đang gợi ý...' : 'Suggest by AI'}
+    </button>
+  );
+}
+
 export default function AIRelationSuggestionsPanel({
   suggestions,
   entities,
   labels,
   loading,
   disabled,
+  showSuggestButton = true,
   onSuggest,
   onChange,
   onToggleAccept,
@@ -40,17 +68,21 @@ export default function AIRelationSuggestionsPanel({
 }: Props) {
   const acceptedCount = suggestions.filter((suggestion) => suggestion.accepted).length;
 
+  if (!showSuggestButton && suggestions.length === 0) return null;
+
   return (
     <div className="space-y-2">
-      <div className="flex justify-center">
-        <button
-          onClick={onSuggest}
-          disabled={disabled || loading || entities.length < 2 || labels.length === 0}
-          className="shrink-0 px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-white text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {loading ? 'Đang gợi ý...' : 'Suggest by AI'}
-        </button>
-      </div>
+      {showSuggestButton && (
+        <div className="flex justify-center">
+          <AIRelationSuggestButton
+            entitiesCount={entities.length}
+            labelsCount={labels.length}
+            loading={loading}
+            disabled={disabled}
+            onSuggest={onSuggest}
+          />
+        </div>
+      )}
 
       {suggestions.map((suggestion) => (
         <div

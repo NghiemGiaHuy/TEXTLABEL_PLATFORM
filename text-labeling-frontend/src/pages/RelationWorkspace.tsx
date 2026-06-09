@@ -23,7 +23,9 @@ import { buildApiUrl } from '../api/apiConfig';
 import { useAuthStore } from '../store/authStore';
 import { useToast } from '../components/toastContext';
 import { useConfirm } from '../components/ConfirmDialog';
-import AIRelationSuggestionsPanel from '../components/AIRelationSuggestionsPanel';
+import AIRelationSuggestionsPanel, {
+  AIRelationSuggestButton,
+} from '../components/AIRelationSuggestionsPanel';
 import type {
   Annotation,
   AnnotationSampleResponse,
@@ -1286,43 +1288,6 @@ export default function RelationWorkspace() {
                   />
                 </div>
 
-                {/* Entity chip legend */}
-                {entities.length > 0 && (
-                  <div className="bg-white rounded-xl border border-surface-200 p-3">
-                    <p className="text-[11px] font-semibold text-surface-400 uppercase tracking-wide mb-2">
-                      {workspaceStep === 'relations'
-                        ? `Entities (${entities.length}) — click để chọn HEAD/TAIL`
-                        : `Entities (${entities.length})`}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {entities.map((ent) => {
-                        const isHead = selectedHead === ent.id;
-                        const isTail = selectedTail === ent.id;
-                        const rgb = hexToRgb(ent.color);
-                        return (
-                          <button
-                            key={ent.id}
-                            onClick={() => {
-                              if (workspaceStep === 'relations' && !isReadOnly) handleEntityClick(ent);
-                            }}
-                            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${workspaceStep === 'relations' && !isReadOnly ? 'cursor-pointer' : 'cursor-default'}`}
-                            style={{
-                              backgroundColor: `rgba(${rgb}, 0.15)`,
-                              color: ent.color,
-                              outline: isHead ? `2px solid ${ent.color}` : isTail ? `2px dashed ${ent.color}` : 'none',
-                              outlineOffset: '1px',
-                            }}
-                          >
-                            {isHead && <span className="text-[9px] font-black mr-0.5 bg-current text-white rounded px-0.5">H</span>}
-                            {isTail && <span className="text-[9px] font-black mr-0.5 bg-current text-white rounded px-0.5">T</span>}
-                            {ent.text}
-                            <span className="text-[9px] opacity-50 ml-0.5">{ent.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
               </div>
             ) : (
               <div className="flex items-center justify-center h-full text-surface-400 text-sm">
@@ -1385,7 +1350,7 @@ export default function RelationWorkspace() {
         </div>
 
         {/* RIGHT: Relation editor */}
-        <div className={`w-full xl:shrink-0 min-h-0 overflow-y-auto bg-white border-t xl:border-t-0 xl:border-l border-surface-200 transition-[width] duration-200 ${sidebarOpen ? 'xl:w-72' : 'xl:w-[360px]'}`}>
+        <div className={`w-full xl:shrink-0 min-h-0 overflow-y-auto xl:overflow-hidden xl:flex xl:flex-col bg-white border-t xl:border-t-0 xl:border-l border-surface-200 transition-[width] duration-200 ${sidebarOpen ? 'xl:w-72' : 'xl:w-[360px]'}`}>
           {workspaceStep === 'entities' ? (
             <>
               <div className="px-4 py-3 border-b border-surface-100">
@@ -1393,7 +1358,7 @@ export default function RelationWorkspace() {
                 <p className="text-xs text-surface-400 mt-0.5">Bôi đen text rồi chọn nhãn NER</p>
               </div>
 
-              <div className="p-4 space-y-4">
+              <div className="p-4 space-y-4 xl:flex-1 xl:min-h-0 xl:overflow-y-auto">
                 <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
                   <p className="text-xs font-semibold text-surface-500 uppercase tracking-wide mb-2">
                     Text đã chọn
@@ -1458,18 +1423,24 @@ export default function RelationWorkspace() {
             </>
           ) : (
             <>
-          <div className="px-4 py-3 border-b border-surface-100">
-            <h2 className="text-sm font-semibold text-surface-800">Gán quan hệ</h2>
-            <p className="text-xs text-surface-400 mt-0.5">Chọn HEAD → TAIL → loại quan hệ</p>
+          <div className="px-4 py-3 border-b border-surface-100 bg-white flex justify-center xl:shrink-0">
+            <AIRelationSuggestButton
+              entitiesCount={entities.length}
+              labelsCount={relTypeOptions.length}
+              loading={aiLoading}
+              disabled={isReadOnly || saving}
+              onSuggest={() => void handleRequestAISuggestions()}
+            />
           </div>
 
-          <div className="p-4 space-y-4">
+          <div className="p-4 space-y-4 xl:flex-1 xl:min-h-0 xl:overflow-y-auto">
             <AIRelationSuggestionsPanel
               suggestions={aiSuggestions}
               entities={entities}
               labels={relTypeOptions}
               loading={aiLoading}
               disabled={isReadOnly || saving}
+              showSuggestButton={false}
               onSuggest={() => void handleRequestAISuggestions()}
               onChange={handleChangeAISuggestion}
               onToggleAccept={handleToggleAcceptAISuggestion}
