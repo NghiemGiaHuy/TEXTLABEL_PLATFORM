@@ -49,7 +49,7 @@ export default function AISuggestionsPanel({
       </div>
 
       {suggestions.length > 0 && (
-        <div className="px-4 pb-3 space-y-2">
+        <div className="max-h-[50vh] overflow-y-auto px-4 pb-3 pr-3 space-y-2">
           {suggestions.map((suggestion) => (
             <div
               key={suggestion.id}
