@@ -17,6 +17,5 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# Run with uvicorn
-# CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Keep the managed database schema in sync before serving requests.
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

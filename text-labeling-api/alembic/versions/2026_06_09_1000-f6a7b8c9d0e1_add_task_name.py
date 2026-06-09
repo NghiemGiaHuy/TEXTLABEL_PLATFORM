@@ -7,7 +7,6 @@ Create Date: 2026-06-09 10:00:00.000000+00:00
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
 
 
 revision: str = "f6a7b8c9d0e1"
@@ -17,11 +16,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "tasks",
-        sa.Column("task_name", sa.String(length=255), nullable=True),
+    op.execute(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS task_name VARCHAR(255)"
     )
 
 
 def downgrade() -> None:
-    op.drop_column("tasks", "task_name")
+    op.execute("ALTER TABLE tasks DROP COLUMN IF EXISTS task_name")
