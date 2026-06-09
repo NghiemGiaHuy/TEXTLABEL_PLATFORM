@@ -11,7 +11,6 @@ import {
   Send,
   Trash2,
   Plus,
-  Save,
   Clock,
   Edit2,
   X,
@@ -825,7 +824,7 @@ export default function RelationWorkspace() {
     }
     setRelations((previous) => [...previous, ...additions]);
     setAISuggestions((previous) => previous.filter((suggestion) => !suggestion.accepted));
-    showToast('success', 'Đã đưa gợi ý AI vào bản nháp. Nhấn Lưu quan hệ để xác nhận.');
+    showToast('success', 'Đã đưa gợi ý AI vào bản nháp.');
   }, [isReadOnly, aiSuggestions, relTypeOptions, relations, showToast]);
 
   const handleCreateEntity = useCallback(async (label: LabelOption) => {
@@ -1188,11 +1187,11 @@ export default function RelationWorkspace() {
 
         {/* CENTER: Text with entity highlights + arrows */}
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden min-h-[560px] xl:min-h-0">
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 min-h-0">
+          <div className="flex-1 overflow-y-auto px-4 pt-4 sm:px-6 sm:pt-6 min-h-0">
             {sampleData ? (
-              <div className="max-w-4xl mx-auto space-y-4">
+              <div className="max-w-4xl mx-auto min-h-full flex flex-col">
                 {/* Sample header */}
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold text-surface-400 uppercase tracking-wide">
                       Sample #{currentSampleIndex + 1}
@@ -1209,30 +1208,20 @@ export default function RelationWorkspace() {
                   </div>
                   <div className="flex items-center gap-2">
                     {workspaceStep === 'relations' && (
-                      <>
-                        <button
-                          onClick={() => {
-                            setWorkspaceStep('entities');
-                            setSelectedHead(null);
-                            setSelectedTail(null);
-                            setSelectedRelLabelId('');
-                            setEditingRelId(null);
-                          }}
-                          disabled={saving || isReadOnly}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-200 text-surface-600 hover:bg-surface-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                        >
-                          <ChevronLeft className="w-3.5 h-3.5" />
-                          NER label
-                        </button>
-                        <button
-                          onClick={() => void handleSave()}
-                          disabled={saving || isReadOnly}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                        >
-                          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                          Lưu quan hệ
-                        </button>
-                      </>
+                      <button
+                        onClick={() => {
+                          setWorkspaceStep('entities');
+                          setSelectedHead(null);
+                          setSelectedTail(null);
+                          setSelectedRelLabelId('');
+                          setEditingRelId(null);
+                        }}
+                        disabled={saving || isReadOnly}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-200 text-surface-600 hover:bg-surface-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        NER label
+                      </button>
                     )}
                     {workspaceStep === 'entities' && (
                       <button
@@ -1261,33 +1250,34 @@ export default function RelationWorkspace() {
                   )}
                 </div>
 
-                {/* Text with entity highlights */}
-                <div className="bg-white rounded-2xl border border-surface-200 shadow-subtle p-5 relative" ref={containerRef}>
-                  {workspaceStep === 'relations' && entities.length === 0 && (
-                    <div className="mb-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700">
-                      Không có entity nào. Sample này cần được gán nhãn NER trước.
-                    </div>
-                  )}
-                  {relations.length > 0 && workspaceStep === 'relations' && (
-                    <RelationArrows
-                      relations={relations}
+                <div className="flex-1 flex items-center py-4 sm:py-6">
+                  {/* Text with entity highlights */}
+                  <div className="w-full bg-white rounded-2xl border border-surface-200 shadow-subtle p-5 relative" ref={containerRef}>
+                    {workspaceStep === 'relations' && entities.length === 0 && (
+                      <div className="mb-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700">
+                        Không có entity nào. Sample này cần được gán nhãn NER trước.
+                      </div>
+                    )}
+                    {relations.length > 0 && workspaceStep === 'relations' && (
+                      <RelationArrows
+                        relations={relations}
+                        entities={entities}
+                        entityRefs={entityRefs}
+                        containerRef={containerRef}
+                      />
+                    )}
+                    <AnnotatedText
+                      text={sampleData.content}
                       entities={entities}
+                      selectedHead={selectedHead}
+                      selectedTail={selectedTail}
+                      onEntityClick={handleEntityClick}
+                      onSelectionChange={workspaceStep === 'entities' && !isReadOnly ? setSelection : undefined}
                       entityRefs={entityRefs}
-                      containerRef={containerRef}
+                      relationMode={workspaceStep === 'relations' && !isReadOnly}
                     />
-                  )}
-                  <AnnotatedText
-                    text={sampleData.content}
-                    entities={entities}
-                    selectedHead={selectedHead}
-                    selectedTail={selectedTail}
-                    onEntityClick={handleEntityClick}
-                    onSelectionChange={workspaceStep === 'entities' && !isReadOnly ? setSelection : undefined}
-                    entityRefs={entityRefs}
-                    relationMode={workspaceStep === 'relations' && !isReadOnly}
-                  />
+                  </div>
                 </div>
-
               </div>
             ) : (
               <div className="flex items-center justify-center h-full text-surface-400 text-sm">
