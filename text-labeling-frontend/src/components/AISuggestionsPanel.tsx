@@ -38,7 +38,7 @@ export default function AISuggestionsPanel({
 
   return (
     <div>
-      <div className="px-4 py-3 flex justify-end">
+      <div className="px-4 py-3 flex justify-center">
         <button
           onClick={onSuggest}
           disabled={disabled || loading}

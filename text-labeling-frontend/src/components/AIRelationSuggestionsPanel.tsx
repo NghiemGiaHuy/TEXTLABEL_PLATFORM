@@ -42,7 +42,7 @@ export default function AIRelationSuggestionsPanel({
 
   return (
     <div className="space-y-2">
-      <div className="flex justify-end">
+      <div className="flex justify-center">
         <button
           onClick={onSuggest}
           disabled={disabled || loading || entities.length < 2 || labels.length === 0}

@@ -896,16 +896,6 @@ export default function Workspace() {
                         {sampleData.content}
                       </p>
                     </div>
-                    {sampleData.metadata && Object.keys(sampleData.metadata).length > 0 && (
-                      <div className="px-6 py-3 border-t border-surface-100 bg-surface-50/60 flex items-center gap-4 flex-wrap">
-                        {Object.entries(sampleData.metadata).slice(0, 5).map(([k, v]) => (
-                          <div key={k} className="flex items-center gap-1.5 text-xs text-surface-400">
-                            <span className="font-semibold text-surface-500">{k}:</span>
-                            <span>{String(v)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
@@ -1126,16 +1116,6 @@ export default function Workspace() {
                       labels={sampleData.labels}
                     />
                   </div>
-                  {sampleData.metadata && Object.keys(sampleData.metadata).length > 0 && (
-                    <div className="px-6 py-3 border-t border-surface-100 bg-surface-50/60 flex items-center gap-4 flex-wrap rounded-b-2xl">
-                      {Object.entries(sampleData.metadata).slice(0, 5).map(([k, v]) => (
-                        <div key={k} className="flex items-center gap-1.5 text-xs text-surface-400">
-                          <span className="font-semibold text-surface-500">{k}:</span>
-                          <span>{String(v)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
               </div>
             ) : (
