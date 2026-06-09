@@ -1129,103 +1129,108 @@ export default function Workspace() {
         </div>
 
         {/* RIGHT: Entity labels + entity list */}
-        <div className={`w-full xl:shrink-0 min-h-0 overflow-y-auto bg-white border-t xl:border-t-0 xl:border-l border-surface-200 transition-[width] duration-200 ${sidebarOpen ? 'xl:w-72' : 'xl:w-[360px]'}`}>
-          <AISuggestionsPanel
-            suggestions={aiSuggestions}
-            labels={sampleData?.labels ?? []}
-            sourceText={sampleData?.content ?? ''}
-            loading={aiLoading}
-            saving={saving}
-            disabled={isReadOnly || !sampleData || (sampleData?.labels.length ?? 0) === 0}
-            onSuggest={() => void handleRequestAISuggestions()}
-            onChange={handleChangeAISuggestion}
-            onToggleAccept={handleToggleAcceptAISuggestion}
-            onReject={handleRejectAISuggestion}
-            onSave={() => void handleSaveAISuggestions()}
-          />
-          {/* Label buttons */}
-          <div className="px-4 pt-4 pb-3 border-b border-surface-100">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-surface-500 uppercase tracking-wide">Nhãn thực thể</p>
-              {selection && (
-                <span className="text-[10px] font-medium text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full">
-                  Nhấp để gán
-                </span>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              {sampleData?.labels.map((label) => {
-                const hasSelection = !!selection && !isReadOnly;
-                const rgb = hexToRgb(label.color);
-                return (
-                  <button
-                    key={label.id}
-                    onClick={() => hasSelection && handleCreateAnnotation(label)}
-                    onMouseDown={(e) => e.preventDefault()}
-                    disabled={!hasSelection || saving}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm font-medium transition-all disabled:cursor-not-allowed"
-                    style={{
-                      backgroundColor: hasSelection ? `rgba(${rgb}, 0.10)` : '#f8fafc',
-                      border: hasSelection ? `1.5px solid rgba(${rgb}, 0.45)` : '1.5px solid #e2e8f0',
-                      color: hasSelection ? label.color : '#6b7280',
-                      opacity: !hasSelection && !saving ? 0.7 : saving ? 0.5 : 1,
-                    }}
-                  >
-                    <span
-                      className="w-3.5 h-3.5 rounded shrink-0"
-                      style={{ backgroundColor: label.color }}
-                    />
-                    <span className="flex-1 truncate">{label.name}</span>
-                    {label.shortcut_key && (
-                      <kbd className="text-[10px] font-mono text-surface-400 bg-white px-1.5 py-0.5 rounded border border-surface-200 shrink-0">
-                        {label.shortcut_key}
-                      </kbd>
-                    )}
-                    {saving && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" style={{ color: label.color }} />}
-                  </button>
-                );
-              })}
-              {sampleData?.labels.length === 0 && (
-                <p className="text-xs text-surface-400 text-center py-3">Chưa có nhãn nào được cấu hình.</p>
-              )}
-            </div>
+        <div className={`w-full xl:shrink-0 min-h-0 bg-white border-t xl:border-t-0 xl:border-l border-surface-200 flex flex-col xl:overflow-hidden transition-[width] duration-200 ${sidebarOpen ? 'xl:w-72' : 'xl:w-[360px]'}`}>
+          <div className="shrink-0 bg-white border-b border-surface-100">
+            <AISuggestionsPanel
+              suggestions={aiSuggestions}
+              labels={sampleData?.labels ?? []}
+              sourceText={sampleData?.content ?? ''}
+              loading={aiLoading}
+              saving={saving}
+              disabled={isReadOnly || !sampleData || (sampleData?.labels.length ?? 0) === 0}
+              onSuggest={() => void handleRequestAISuggestions()}
+              onChange={handleChangeAISuggestion}
+              onToggleAccept={handleToggleAcceptAISuggestion}
+              onReject={handleRejectAISuggestion}
+              onSave={() => void handleSaveAISuggestions()}
+            />
           </div>
 
-          {/* Entity list */}
-          <div>
-            <div className="px-4 py-3 flex items-center gap-2 border-b border-surface-50">
-              <p className="text-xs font-semibold text-surface-500 uppercase tracking-wide">Entities đã gán</p>
-              <span className="ml-auto text-[10px] font-bold text-surface-400 bg-surface-100 px-2 py-0.5 rounded-full">
-                {sampleData?.annotations.length ?? 0}
-              </span>
+          <div className="xl:flex-1 xl:min-h-0 xl:overflow-y-auto">
+            {/* Label buttons */}
+            <div className="px-4 pt-4 pb-3 border-b border-surface-100">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-surface-500 uppercase tracking-wide">Nhãn thực thể</p>
+                {selection && (
+                  <span className="text-[10px] font-medium text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full">
+                    Nhấp để gán
+                  </span>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                {sampleData?.labels.map((label) => {
+                  const hasSelection = !!selection && !isReadOnly;
+                  const rgb = hexToRgb(label.color);
+                  return (
+                    <button
+                      key={label.id}
+                      onClick={() => hasSelection && handleCreateAnnotation(label)}
+                      onMouseDown={(e) => e.preventDefault()}
+                      disabled={!hasSelection || saving}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm font-medium transition-all disabled:cursor-not-allowed"
+                      style={{
+                        backgroundColor: hasSelection ? `rgba(${rgb}, 0.10)` : '#f8fafc',
+                        border: hasSelection ? `1.5px solid rgba(${rgb}, 0.45)` : '1.5px solid #e2e8f0',
+                        color: hasSelection ? label.color : '#6b7280',
+                        opacity: !hasSelection && !saving ? 0.7 : saving ? 0.5 : 1,
+                      }}
+                    >
+                      <span
+                        className="w-3.5 h-3.5 rounded shrink-0"
+                        style={{ backgroundColor: label.color }}
+                      />
+                      <span className="flex-1 truncate">{label.name}</span>
+                      {label.shortcut_key && (
+                        <kbd className="text-[10px] font-mono text-surface-400 bg-white px-1.5 py-0.5 rounded border border-surface-200 shrink-0">
+                          {label.shortcut_key}
+                        </kbd>
+                      )}
+                      {saving && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" style={{ color: label.color }} />}
+                    </button>
+                  );
+                })}
+                {sampleData?.labels.length === 0 && (
+                  <p className="text-xs text-surface-400 text-center py-3">Chưa có nhãn nào được cấu hình.</p>
+                )}
+              </div>
             </div>
 
-            {(sampleData?.annotations.length ?? 0) === 0 ? (
-              <div className="flex flex-col items-center gap-2 py-10 text-center px-4">
-                <div className="w-10 h-10 rounded-full bg-surface-100 flex items-center justify-center">
-                  <MousePointer className="w-5 h-5 text-surface-300" />
+            {/* Entity list */}
+            <div>
+              <div className="px-4 py-3 flex items-center gap-2 border-b border-surface-50">
+                <p className="text-xs font-semibold text-surface-500 uppercase tracking-wide">Entities đã gán</p>
+                <span className="ml-auto text-[10px] font-bold text-surface-400 bg-surface-100 px-2 py-0.5 rounded-full">
+                  {sampleData?.annotations.length ?? 0}
+                </span>
+              </div>
+
+              {(sampleData?.annotations.length ?? 0) === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-10 text-center px-4">
+                  <div className="w-10 h-10 rounded-full bg-surface-100 flex items-center justify-center">
+                    <MousePointer className="w-5 h-5 text-surface-300" />
+                  </div>
+                  <p className="text-xs text-surface-400">Chưa có entity nào.<br />Bôi đen văn bản và chọn nhãn.</p>
                 </div>
-                <p className="text-xs text-surface-400">Chưa có entity nào.<br />Bôi đen văn bản và chọn nhãn.</p>
-              </div>
-            ) : (
-              <div className="p-3 space-y-1.5">
-                {[...(sampleData?.annotations ?? [])]
-                  .sort((a, b) => a.start_offset - b.start_offset)
-                  .map((ann) => (
-                    <NEREntityItem
-                      key={ann.id}
-                      annotation={ann}
-                      isReadOnly={isReadOnly}
-                      onDelete={handleDeleteAnnotation}
-                    />
-                  ))}
-              </div>
-            )}
+              ) : (
+                <div className="p-3 space-y-1.5">
+                  {[...(sampleData?.annotations ?? [])]
+                    .sort((a, b) => a.start_offset - b.start_offset)
+                    .map((ann) => (
+                      <NEREntityItem
+                        key={ann.id}
+                        annotation={ann}
+                        isReadOnly={isReadOnly}
+                        onDelete={handleDeleteAnnotation}
+                      />
+                    ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Progress dots */}
           {samples.length > 0 && samples.length <= 40 && (
-            <div className="px-4 py-3 border-t border-surface-100">
+            <div className="shrink-0 bg-white px-4 py-3 border-t border-surface-100">
               <p className="text-[10px] font-semibold text-surface-400 uppercase tracking-wide mb-2">Tiến độ</p>
               <div className="flex flex-wrap gap-1">
                 {samples.map((s, i) => {
