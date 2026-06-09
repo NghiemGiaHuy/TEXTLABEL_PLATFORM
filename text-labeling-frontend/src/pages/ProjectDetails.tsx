@@ -144,6 +144,7 @@ type TaskAssignmentGroup = {
 function getTaskAssignmentGroupKey(task: Task) {
   return [
     task.dataset_id,
+    task.task_name ?? '',
     task.assignment_method,
     task.assigned_by,
     task.annotation_type ?? task.task_type ?? '',
@@ -1741,6 +1742,7 @@ function AssignModal({
   onAssigned: () => void;
 }) {
   const { showToast } = useToast();
+  const [taskName, setTaskName]         = useState('');
   const [annotationType, setAnnotationType] = useState<AnnotationType>('text_classification');
   const [datasetId, setDatasetId]     = useState(datasets[0]?.id || '');
   const [labelSetId, setLabelSetId]   = useState(labelSets[0]?.id || '');
@@ -1843,6 +1845,7 @@ function AssignModal({
 
       await taskApi.assignTasks(projectId, {
         dataset_id: datasetId,
+        task_name: taskName.trim() || undefined,
         method,
         annotation_type: annotationType,
         label_set_id: labelSetId,
@@ -1980,6 +1983,19 @@ function AssignModal({
             <div className="flex items-center gap-2 mb-3">
               <span className="w-5 h-5 rounded-full bg-brand-100 text-brand-700 text-[10px] font-bold flex items-center justify-center shrink-0">2</span>
               <h3 className="text-sm font-semibold text-surface-800">Cấu hình phân công</h3>
+            </div>
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-surface-500 mb-1.5 uppercase tracking-wide">
+                Tên task <span className="normal-case font-normal text-surface-400">(không bắt buộc)</span>
+              </label>
+              <input
+                type="text"
+                value={taskName}
+                onChange={(e) => setTaskName(e.target.value)}
+                maxLength={255}
+                placeholder="Ví dụ: Gán nhãn dữ liệu đợt 1"
+                className="input-field"
+              />
             </div>
             <div className="grid grid-cols-2 gap-4 mb-4">
               {/* Dataset */}
@@ -2335,6 +2351,7 @@ function AssignTab({
   const [detailTask, setDetailTask] = useState<TaskDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editTaskName, setEditTaskName] = useState('');
   const [editAnnotationType, setEditAnnotationType] = useState<AnnotationType>('text_classification');
   const [editDatasetId, setEditDatasetId] = useState('');
   const [editLabelSetId, setEditLabelSetId] = useState('');
@@ -2418,6 +2435,7 @@ function AssignTab({
 
   const getAssignmentGroupKey = (task: Task) => [
     task.dataset_id,
+    task.task_name ?? '',
     task.assignment_method,
     task.assigned_by,
     getTaskAnnotationType(task),
@@ -2465,6 +2483,7 @@ function AssignTab({
   const startEdit = (task: Task) => {
     const assignmentTasks = getAssignmentTasks(task);
     setEditingTask(task);
+    setEditTaskName(task.task_name ?? '');
     setEditAnnotationType(getTaskAnnotationType(task));
     setEditDatasetId(task.dataset_id);
     setEditLabelSetId(task.label_set_id ?? '');
@@ -2547,6 +2566,7 @@ function AssignTab({
     const payload = canEditFullConfig
       ? {
           status: assignmentStatus,
+          task_name: editTaskName.trim() || null,
           dataset_id: editDatasetId,
           method: editMethod,
           annotation_type: editAnnotationType,
@@ -2557,6 +2577,7 @@ function AssignTab({
         }
       : {
           status: assignmentStatus,
+          task_name: editTaskName.trim() || null,
           annotator_ids: selectedAnnotatorIds,
           reviewer_ids: selectedReviewerIds,
         };
@@ -2708,6 +2729,11 @@ function AssignTab({
                           ) : (
                             <span className="text-xs text-surface-400 italic">Chưa xác định</span>
                           )}
+                          {task.task_name && (
+                            <p className="text-sm font-semibold text-surface-900 truncate max-w-[280px]">
+                              {task.task_name}
+                            </p>
+                          )}
                           <p className="text-sm text-surface-700 truncate max-w-[280px]">
                             {getDatasetName(task.dataset_id)}
                           </p>
@@ -2822,6 +2848,11 @@ function AssignTab({
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-surface-400 mb-2">Task</p>
+                {detailTask.task_name && (
+                  <p className="text-base font-semibold text-surface-900 mb-2">
+                    {detailTask.task_name}
+                  </p>
+                )}
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
                     detailTask.annotation_type === 'text_classification'
@@ -2952,11 +2983,13 @@ function AssignTab({
             editDatasetId !== editingTask.dataset_id ||
             (editLabelSetId || '') !== (editingTask.label_set_id ?? '') ||
             editMethod !== originalMethod);
+        const taskNameChanged =
+          editTaskName.trim() !== (editingTask.task_name ?? '').trim();
         const peopleChanged =
           canEditPeople &&
           (!isSameMemberSet(selectedAnnotatorIds, originalAnnotatorIds) ||
             !isSameMemberSet(selectedReviewerIds, originalReviewerIds));
-        const hasChanges = configChanged || peopleChanged;
+        const hasChanges = taskNameChanged || configChanged || peopleChanged;
         const assigneeOptions = annotators.map((member) => ({
           user_id: member.user_id,
           full_name: member.full_name,
@@ -3075,7 +3108,7 @@ function AssignTab({
                     <p className="text-xs text-surface-400">
                       {canEditFullConfig
                         ? 'Trạng thái Chưa làm: có thể cấu hình lại toàn bộ phân công'
-                        : 'Trạng thái Đang làm: chỉ thay annotator và reviewer, giữ nguyên cấu hình gốc'}
+                        : 'Trạng thái Đang làm: có thể đổi tên task, annotator và reviewer; giữ nguyên cấu hình gốc'}
                     </p>
                   </div>
                 </div>
@@ -3131,6 +3164,19 @@ function AssignTab({
                     <span className="w-5 h-5 rounded-full bg-brand-100 text-brand-700 text-[10px] font-bold flex items-center justify-center shrink-0">2</span>
                     <h3 className="text-sm font-semibold text-surface-800">Cấu hình phân công</h3>
                     {!canEditFullConfig && <span className="text-xs text-surface-400">Dataset, bộ nhãn và method đã khóa</span>}
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-xs font-semibold text-surface-500 mb-1.5 uppercase tracking-wide">
+                      Tên task <span className="normal-case font-normal text-surface-400">(không bắt buộc)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editTaskName}
+                      onChange={(e) => setEditTaskName(e.target.value)}
+                      maxLength={255}
+                      placeholder="Ví dụ: Gán nhãn dữ liệu đợt 1"
+                      className="input-field"
+                    />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>

@@ -299,6 +299,7 @@ class ExportService:
         for task in result.scalars().unique().all():
             key = (
                 task.dataset_id,
+                task.task_name,
                 task.assignment_method,
                 task.assigned_by,
                 task.annotation_type,

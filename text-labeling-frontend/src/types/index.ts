@@ -197,6 +197,7 @@ export type AnnotationType =
 
 export interface Task {
   id: string;
+  task_name: string | null;
   project_id: string;
   dataset_id: string;
   assignee_id: string;
@@ -241,6 +242,7 @@ export interface TaskListResponse {
 
 export interface AssignTasksPayload {
   dataset_id: string;
+  task_name?: string;
   method: 'manual' | 'round_robin';
   annotation_type?: AnnotationType;
   label_set_id?: string;
@@ -251,6 +253,7 @@ export interface AssignTasksPayload {
 
 export interface UpdateAssignmentPayload {
   task_ids?: string[];
+  task_name?: string | null;
   status?: string;
   dataset_id?: string;
   method?: 'manual' | 'round_robin';

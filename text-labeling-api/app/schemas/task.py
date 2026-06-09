@@ -90,6 +90,11 @@ class AssignTasksRequest(BaseModel):
     dataset_id: UUID = Field(
         ..., validation_alias=AliasChoices("dataset_id", "datasetId")
     )
+    task_name: Optional[str] = Field(
+        None,
+        max_length=255,
+        validation_alias=AliasChoices("task_name", "taskName"),
+    )
     method: str = Field(
         ...,
         description="'manual' or 'round_robin'",
@@ -124,6 +129,14 @@ class AssignTasksRequest(BaseModel):
         description="Required for manual method. Ignored for round_robin.",
     )
 
+    @field_validator("task_name", mode="before")
+    @classmethod
+    def normalize_task_name(cls, value):
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
 
 class UpdateAssignmentRequest(BaseModel):
     """
@@ -136,6 +149,11 @@ class UpdateAssignmentRequest(BaseModel):
         None,
         description="Tasks that belong to the assignment group. Optional for task-scoped endpoint.",
         validation_alias=AliasChoices("task_ids", "taskIds"),
+    )
+    task_name: Optional[str] = Field(
+        None,
+        max_length=255,
+        validation_alias=AliasChoices("task_name", "taskName"),
     )
     assignment_status: Optional[str] = Field(
         None,
@@ -177,6 +195,14 @@ class UpdateAssignmentRequest(BaseModel):
         description="Manual assignment rows. For in_progress only annotator_id is used.",
     )
 
+    @field_validator("task_name", mode="before")
+    @classmethod
+    def normalize_task_name(cls, value):
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
 
 class ReassignTaskRequest(BaseModel):
     new_assignee_id: UUID
@@ -202,6 +228,7 @@ class TaskSampleResponse(BaseModel):
 
 class TaskResponse(BaseModel):
     id: UUID
+    task_name: Optional[str] = None
     project_id: UUID
     dataset_id: UUID
     assignee_id: UUID

@@ -50,6 +50,7 @@ class TaskService:
         current_user: User,
         dataset_id: UUID,
         method: str,
+        task_name: Optional[str] = None,
         assignments: Optional[List[dict]] = None,
         annotation_type: Optional[str] = None,
         label_set_id: Optional[str] = None,
@@ -71,6 +72,7 @@ class TaskService:
         project = await self._check_project_owner(project_id, current_user)
 
         method_enum = self._parse_assignment_method(method)
+        normalized_task_name = self._normalize_task_name(task_name)
 
         # Validate dataset
         dataset = await self._get_dataset_or_404(dataset_id, project_id)
@@ -134,6 +136,7 @@ class TaskService:
                 current_user=current_user,
                 unassigned_samples=unassigned_samples,
                 assignments=assignments or [],
+                task_name=normalized_task_name,
                 annotation_type=annotation_type_enum,
                 label_set_id=label_set_uuid,
             )
@@ -143,6 +146,7 @@ class TaskService:
                 current_user=current_user,
                 dataset_id=dataset_id,
                 unassigned_samples=unassigned_samples,
+                task_name=normalized_task_name,
                 annotation_type=annotation_type_enum,
                 label_set_id=label_set_uuid,
                 annotator_ids=self._parse_uuid_list(
@@ -170,6 +174,7 @@ class TaskService:
                 entity_id=project_id,
                 details={
                     "dataset_id": str(dataset_id),
+                    "task_name": normalized_task_name,
                     "method": method,
                     "annotation_type": (
                         annotation_type_enum.value
@@ -381,6 +386,7 @@ class TaskService:
         current_user: User,
         task_ids: Optional[List[UUID]] = None,
         source_task_id: Optional[UUID] = None,
+        task_name: Optional[str] = None,
         assignment_status: Optional[str] = None,
         dataset_id: Optional[UUID] = None,
         method: Optional[str] = None,
@@ -425,6 +431,7 @@ class TaskService:
                 project_id=project_id,
                 current_user=current_user,
                 tasks=tasks,
+                task_name=task_name,
                 dataset_id=dataset_id,
                 method=method,
                 assignments=assignments,
@@ -440,6 +447,7 @@ class TaskService:
                 project_id=project_id,
                 current_user=current_user,
                 tasks=tasks,
+                task_name=task_name,
                 dataset_id=dataset_id,
                 method=method,
                 assignments=assignments,
@@ -691,6 +699,7 @@ class TaskService:
         project_id: UUID,
         current_user: User,
         tasks: List[Task],
+        task_name: Optional[str],
         dataset_id: Optional[UUID],
         method: Optional[str],
         assignments: Optional[List[dict]],
@@ -701,11 +710,17 @@ class TaskService:
         provided_fields: set[str],
     ) -> dict:
         current_dataset_id = self._single_task_value(tasks, "dataset_id")
+        current_task_name = self._single_task_value(tasks, "task_name")
         current_method = self._single_task_value(tasks, "assignment_method")
         current_annotation_type = self._single_task_value(tasks, "annotation_type")
         current_label_set_id = self._single_task_value(tasks, "label_set_id")
 
         next_dataset_id = dataset_id or current_dataset_id
+        next_task_name = (
+            self._normalize_task_name(task_name)
+            if "task_name" in provided_fields
+            else current_task_name
+        )
         if "method" in provided_fields:
             if not method:
                 raise BadRequestException("method is required for assignment update.")
@@ -773,6 +788,7 @@ class TaskService:
             current_user=current_user,
             dataset_id=next_dataset_id,
             method=next_method.value,
+            task_name=next_task_name,
             assignments=next_assignments,
             annotation_type=next_annotation_type,
             label_set_id=next_label_set_id,
@@ -792,6 +808,7 @@ class TaskService:
                         str(task["id"]) for task in result["assignments"]
                     ],
                     "dataset_id": str(next_dataset_id),
+                    "task_name": next_task_name,
                     "method": next_method.value,
                     "annotation_type": next_annotation_type,
                     "label_set_id": next_label_set_id,
@@ -810,6 +827,7 @@ class TaskService:
         project_id: UUID,
         current_user: User,
         tasks: List[Task],
+        task_name: Optional[str],
         dataset_id: Optional[UUID],
         method: Optional[str],
         assignments: Optional[List[dict]],
@@ -820,9 +838,15 @@ class TaskService:
         provided_fields: set[str],
     ) -> dict:
         current_dataset_id = self._single_task_value(tasks, "dataset_id")
+        current_task_name = self._single_task_value(tasks, "task_name")
         current_method = self._single_task_value(tasks, "assignment_method")
         current_annotation_type = self._single_task_value(tasks, "annotation_type")
         current_label_set_id = self._single_task_value(tasks, "label_set_id")
+        next_task_name = (
+            self._normalize_task_name(task_name)
+            if "task_name" in provided_fields
+            else current_task_name
+        )
 
         if "dataset_id" in provided_fields and dataset_id != current_dataset_id:
             raise BadRequestException(
@@ -853,6 +877,10 @@ class TaskService:
                 raise BadRequestException(
                     "Cannot change label_set after an assignment is in_progress."
                 )
+
+        if "task_name" in provided_fields:
+            for task in tasks:
+                task.task_name = next_task_name
 
         next_annotator_ids = None
         if annotator_ids is not None:
@@ -898,6 +926,7 @@ class TaskService:
                 entity_id=project_id,
                 details={
                     "task_ids": [str(task.id) for task in tasks],
+                    "task_name": next_task_name,
                     "method": current_method.value,
                     "annotator_mapping": annotator_mapping,
                     "reviewer_mapping": reviewer_mapping,
@@ -937,6 +966,10 @@ class TaskService:
             filters.append(Task.label_set_id.is_(None))
         else:
             filters.append(Task.label_set_id == source_task.label_set_id)
+        if source_task.task_name is None:
+            filters.append(Task.task_name.is_(None))
+        else:
+            filters.append(Task.task_name == source_task.task_name)
 
         result = await self.db.execute(
             select(Task)
@@ -1011,6 +1044,7 @@ class TaskService:
 
         for attr in (
             "dataset_id",
+            "task_name",
             "assignment_method",
             "annotation_type",
             "label_set_id",
@@ -1094,6 +1128,10 @@ class TaskService:
                 filters.append(Task.label_set_id.is_(None))
             else:
                 filters.append(Task.label_set_id == sample_task.label_set_id)
+            if sample_task.task_name is None:
+                filters.append(Task.task_name.is_(None))
+            else:
+                filters.append(Task.task_name == sample_task.task_name)
 
             result = await self.db.execute(
                 select(Task.status).where(and_(*filters))
@@ -1156,6 +1194,7 @@ class TaskService:
         return (
             task.project_id,
             task.dataset_id,
+            task.task_name,
             task.assignment_method,
             task.assigned_by,
             task.annotation_type,
@@ -1306,6 +1345,7 @@ class TaskService:
         current_user: User,
         unassigned_samples: List[DataSample],
         assignments: List[dict],
+        task_name: Optional[str] = None,
         annotation_type: Optional[AnnotationType] = None,
         label_set_id: Optional[UUID] = None,
     ) -> List[Task]:
@@ -1412,6 +1452,7 @@ class TaskService:
 
             # Create task
             task = Task(
+                task_name=task_name,
                 project_id=project_id,
                 dataset_id=batch[0].dataset_id,
                 assignee_id=annotator_id,
@@ -1450,6 +1491,7 @@ class TaskService:
         current_user: User,
         dataset_id: UUID,
         unassigned_samples: List[DataSample],
+        task_name: Optional[str] = None,
         annotation_type: Optional[AnnotationType] = None,
         label_set_id: Optional[UUID] = None,
         annotator_ids: Optional[List[UUID]] = None,
@@ -1490,6 +1532,7 @@ class TaskService:
                 continue
 
             task = Task(
+                task_name=task_name,
                 project_id=project.id,
                 dataset_id=dataset_id,
                 assignee_id=annotator_id,
@@ -1710,6 +1753,12 @@ class TaskService:
                 f"Invalid method: '{method}'. Must be 'manual' or 'round_robin'."
             )
 
+    def _normalize_task_name(self, task_name: Optional[str]) -> Optional[str]:
+        if task_name is None:
+            return None
+        normalized = str(task_name).strip()
+        return normalized or None
+
     def _parse_uuid_list(self, values: List[UUID], field_name: str) -> List[UUID]:
         parsed_values = []
         for idx, value in enumerate(values, start=1):
@@ -1918,6 +1967,7 @@ class TaskService:
         )
         return {
             "id": task.id,
+            "task_name": task.task_name,
             "project_id": task.project_id,
             "dataset_id": task.dataset_id,
             "assignee_id": task.assignee_id,

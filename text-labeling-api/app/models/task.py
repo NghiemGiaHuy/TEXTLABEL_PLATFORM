@@ -19,6 +19,7 @@ from sqlalchemy import (
     Enum as SAEnum,
     ForeignKey,
     Integer,
+    String,
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -75,6 +76,10 @@ class TaskSampleStatus(str, enum.Enum):
 class Task(Base, UUIDMixin):
     __tablename__ = "tasks"
 
+    task_name: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+    )
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("projects.id", ondelete="CASCADE"),

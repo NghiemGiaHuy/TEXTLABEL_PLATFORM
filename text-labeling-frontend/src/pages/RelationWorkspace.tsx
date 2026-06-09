@@ -1385,7 +1385,7 @@ export default function RelationWorkspace() {
         </div>
 
         {/* RIGHT: Relation editor */}
-        <div className={`w-full xl:shrink-0 min-h-0 overflow-y-auto bg-white border-t xl:border-t-0 xl:border-l border-surface-200 flex flex-col transition-[width] duration-200 ${sidebarOpen ? 'xl:w-72' : 'xl:w-[360px]'}`}>
+        <div className={`w-full xl:shrink-0 min-h-0 overflow-y-auto bg-white border-t xl:border-t-0 xl:border-l border-surface-200 transition-[width] duration-200 ${sidebarOpen ? 'xl:w-72' : 'xl:w-[360px]'}`}>
           {workspaceStep === 'entities' ? (
             <>
               <div className="px-4 py-3 border-b border-surface-100">
@@ -1393,7 +1393,7 @@ export default function RelationWorkspace() {
                 <p className="text-xs text-surface-400 mt-0.5">Bôi đen text rồi chọn nhãn NER</p>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <div className="p-4 space-y-4">
                 <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
                   <p className="text-xs font-semibold text-surface-500 uppercase tracking-wide mb-2">
                     Text đã chọn
@@ -1463,7 +1463,7 @@ export default function RelationWorkspace() {
             <p className="text-xs text-surface-400 mt-0.5">Chọn HEAD → TAIL → loại quan hệ</p>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="p-4 space-y-4">
             <AIRelationSuggestionsPanel
               suggestions={aiSuggestions}
               entities={entities}

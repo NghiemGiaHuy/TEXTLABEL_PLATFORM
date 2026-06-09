@@ -904,7 +904,7 @@ export default function Workspace() {
           </div>
 
           {/* RIGHT: Label selector */}
-          <div className={`w-full xl:shrink-0 min-h-0 overflow-y-auto bg-white border-t xl:border-t-0 xl:border-l border-surface-200 flex flex-col transition-[width] duration-200 ${sidebarOpen ? 'xl:w-64' : 'xl:w-80'}`}>
+          <div className={`w-full xl:shrink-0 min-h-0 overflow-y-auto bg-white border-t xl:border-t-0 xl:border-l border-surface-200 transition-[width] duration-200 ${sidebarOpen ? 'xl:w-64' : 'xl:w-80'}`}>
             <AISuggestionsPanel
               suggestions={aiSuggestions}
               labels={sampleData?.labels ?? []}
@@ -935,7 +935,7 @@ export default function Workspace() {
                 </button>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="p-4">
               {sampleData ? (
                 sampleData.labels.length === 0 ? (
                   <div className="text-center py-12">
@@ -1129,7 +1129,7 @@ export default function Workspace() {
         </div>
 
         {/* RIGHT: Entity labels + entity list */}
-        <div className={`w-full xl:shrink-0 min-h-0 overflow-y-auto bg-white border-t xl:border-t-0 xl:border-l border-surface-200 flex flex-col transition-[width] duration-200 ${sidebarOpen ? 'xl:w-72' : 'xl:w-[360px]'}`}>
+        <div className={`w-full xl:shrink-0 min-h-0 overflow-y-auto bg-white border-t xl:border-t-0 xl:border-l border-surface-200 transition-[width] duration-200 ${sidebarOpen ? 'xl:w-72' : 'xl:w-[360px]'}`}>
           <AISuggestionsPanel
             suggestions={aiSuggestions}
             labels={sampleData?.labels ?? []}
@@ -1192,7 +1192,7 @@ export default function Workspace() {
           </div>
 
           {/* Entity list */}
-          <div className="flex-1 overflow-y-auto">
+          <div>
             <div className="px-4 py-3 flex items-center gap-2 border-b border-surface-50">
               <p className="text-xs font-semibold text-surface-500 uppercase tracking-wide">Entities đã gán</p>
               <span className="ml-auto text-[10px] font-bold text-surface-400 bg-surface-100 px-2 py-0.5 rounded-full">
