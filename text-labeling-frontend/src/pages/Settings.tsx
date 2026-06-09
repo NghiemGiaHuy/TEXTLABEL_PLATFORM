@@ -18,7 +18,6 @@ import {
   Globe,
   Type,
   Sun,
-  Moon,
   Camera,
   Mail,
   Calendar,
@@ -41,7 +40,7 @@ type Tab = 'profile' | 'security' | 'appearance' | 'notifications' | 'system';
 
 interface UISettings {
   theme: UiTheme;
-  language: 'vi' | 'en';
+  language: 'vi';
   annotationFontSize: 'sm' | 'md' | 'lg';
 }
 
@@ -71,7 +70,12 @@ function loadUISettings(): UISettings {
     const raw = localStorage.getItem('settings_ui');
     if (!raw) return DEFAULT_UI;
     const parsed = JSON.parse(raw);
-    return { ...DEFAULT_UI, ...parsed, theme: normalizeUiTheme(parsed?.theme) };
+    return {
+      ...DEFAULT_UI,
+      ...parsed,
+      theme: normalizeUiTheme(),
+      language: 'vi',
+    };
   } catch { return DEFAULT_UI; }
 }
 
@@ -457,7 +461,7 @@ function AppearanceTab() {
   const [settings, setSettings] = useState<UISettings>(loadUISettings);
 
   useEffect(() => {
-    applyUiTheme(settings.theme);
+    applyUiTheme();
   }, [settings.theme]);
 
   const handleSave = () => {
@@ -472,10 +476,9 @@ function AppearanceTab() {
         {/* Theme */}
         <div>
           <SectionTitle>Chủ đề màu sắc</SectionTitle>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             {([
               { value: 'light', label: 'Sáng', icon: Sun, preview: 'theme-preview-light border-2' },
-              { value: 'dark', label: 'Tối', icon: Moon, preview: 'theme-preview-dark border-2' },
             ] as const).map(({ value, label, icon: Icon, preview }) => {
               const active = settings.theme === value;
               return (
@@ -511,7 +514,6 @@ function AppearanceTab() {
           <div className="flex gap-3">
             {([
               { value: 'vi', label: '🇻🇳 Tiếng Việt' },
-              { value: 'en', label: '🇬🇧 English' },
             ] as const).map(({ value, label }) => {
               const active = settings.language === value;
               return (
