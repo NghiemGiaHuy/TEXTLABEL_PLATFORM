@@ -72,7 +72,6 @@ class TaskService:
         project = await self._check_project_owner(project_id, current_user)
 
         method_enum = self._parse_assignment_method(method)
-        normalized_task_name = self._normalize_task_name(task_name)
 
         # Validate dataset
         dataset = await self._get_dataset_or_404(dataset_id, project_id)
@@ -80,6 +79,7 @@ class TaskService:
             raise BadRequestException(
                 f"Dataset is not ready for assignment (status: {dataset.status.value})"
             )
+        normalized_task_name = self._normalize_task_name(task_name) or dataset.name
 
         annotation_type_enum = self._parse_annotation_type(annotation_type)
 
@@ -1967,7 +1967,7 @@ class TaskService:
         )
         return {
             "id": task.id,
-            "task_name": task.task_name,
+            "task_name": self._normalize_task_name(task.task_name) or dataset_name,
             "project_id": task.project_id,
             "dataset_id": task.dataset_id,
             "assignee_id": task.assignee_id,

@@ -20,6 +20,15 @@ def upgrade() -> None:
         "ALTER TABLE tasks "
         "ADD COLUMN IF NOT EXISTS task_name VARCHAR(255)"
     )
+    op.execute(
+        """
+        UPDATE tasks
+        SET task_name = datasets.name
+        FROM datasets
+        WHERE tasks.dataset_id = datasets.id
+          AND (tasks.task_name IS NULL OR BTRIM(tasks.task_name) = '')
+        """
+    )
 
 
 def downgrade() -> None:

@@ -135,6 +135,10 @@ function isAnnotateTaskCompleted(task: Pick<Task, 'status' | 'task_status' | 'as
   return ['submitted', 'approved'].includes(getTaskLifecycleStatus(task));
 }
 
+function getTaskDisplayName(task: Pick<Task, 'task_name' | 'dataset_name'>): string {
+  return task.task_name?.trim() || task.dataset_name || '—';
+}
+
 type TaskAssignmentGroup = {
   key: string;
   tasks: Task[];
@@ -1301,7 +1305,7 @@ function TasksTab({
         <table className="w-full">
           <thead>
             <tr className="border-b border-surface-100">
-              <Th>Task ID</Th>
+              <Th>Task name</Th>
               <Th>Assignee</Th>
               <Th>Samples</Th>
               <Th>Method</Th>
@@ -1316,8 +1320,8 @@ function TasksTab({
               return (
                 <tr key={group.key} className="hover:bg-surface-50/50 transition-colors">
                   <td className="px-5 py-3.5 align-middle">
-                    <span className="text-xs font-mono text-surface-500 bg-surface-50 px-2 py-0.5 rounded">
-                      {task.id.slice(0, 8)}…
+                    <span className="block max-w-[220px] truncate text-sm font-medium text-surface-800" title={getTaskDisplayName(task)}>
+                      {getTaskDisplayName(task)}
                     </span>
                   </td>
                   <td className="px-5 py-3.5">
@@ -1574,8 +1578,8 @@ function ReviewTaskTable({
     <table className="w-full">
       <thead>
         <tr className="border-b border-surface-100">
-          <Th>Task ID</Th>
-          {!showMethod && <Th>Task name</Th>}
+          <Th>Task name</Th>
+          {!showMethod && <Th>Dataset</Th>}
           <Th>Annotator</Th>
           <Th>Samples</Th>
           {showMethod && <Th>Method</Th>}
@@ -1591,8 +1595,8 @@ function ReviewTaskTable({
           return (
           <tr key={group.key} className="hover:bg-surface-50/50 transition-colors">
             <td className="px-5 py-3.5 align-middle">
-              <span className="text-xs font-mono text-surface-500 bg-surface-50 px-2 py-0.5 rounded">
-                {task.id.slice(0, 8)}…
+              <span className="block max-w-[220px] truncate text-sm font-medium text-surface-800" title={getTaskDisplayName(task)}>
+                {getTaskDisplayName(task)}
               </span>
             </td>
             {!showMethod && (
@@ -2701,7 +2705,8 @@ function AssignTab({
             <table className="w-full">
               <thead>
                 <tr className="border-b border-surface-100">
-                  <Th>Task</Th>
+                  <Th>Task ID</Th>
+                  <Th>Task name</Th>
                   <Th>Người phụ trách</Th>
                   <Th>Samples</Th>
                   <Th>Trạng thái</Th>
@@ -2716,33 +2721,29 @@ function AssignTab({
                   const canDeleteGroup = group.tasks.every(isNotStartedAssignment);
                   return (
                     <tr key={group.key} className="hover:bg-surface-50/50 transition-colors">
-                      {/* Task */}
-                      <td className="px-5 py-4 min-w-[240px] align-middle">
-                        <div className="flex flex-col gap-1.5">
-                          {at ? (
-                            <span className={`inline-flex w-fit items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${at.bg} ${at.text}`}>
+                      {/* Task ID */}
+                      <td className="px-5 py-4 align-middle">
+                        <span
+                          title={task.id}
+                          className="inline-flex rounded-md bg-surface-50 px-2 py-1 font-mono text-xs text-surface-500"
+                        >
+                          {task.id.slice(0, 8)}...
+                        </span>
+                      </td>
+                      {/* Task name */}
+                      <td className="px-5 py-4 min-w-[220px] align-middle">
+                        <div className="max-w-[260px]">
+                          <p className="truncate text-sm font-semibold text-surface-900" title={getTaskDisplayName(task)}>
+                            {getTaskDisplayName(task)}
+                          </p>
+                          {at && (
+                            <span className={`mt-1.5 inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${at.bg} ${at.text}`}>
                               {getTaskAnnotationType(task) === 'sequence_labeling'
                                 ? <Tag className="w-3 h-3" />
                                 : <BadgeCheck className="w-3 h-3" />}
                               {at.label}
                             </span>
-                          ) : (
-                            <span className="text-xs text-surface-400 italic">Chưa xác định</span>
                           )}
-                          {task.task_name && (
-                            <p className="text-sm font-semibold text-surface-900 truncate max-w-[280px]">
-                              {task.task_name}
-                            </p>
-                          )}
-                          <p className="text-sm text-surface-700 truncate max-w-[280px]">
-                            {getDatasetName(task.dataset_id)}
-                          </p>
-                          <span
-                            title={task.id}
-                            className="w-fit rounded-md bg-surface-50 px-2 py-0.5 font-mono text-[11px] text-surface-500"
-                          >
-                            ID: {task.id.slice(0, 8)}...
-                          </span>
                         </div>
                       </td>
                       {/* People */}
