@@ -443,8 +443,9 @@ function RelationArrows({
     }
 
     if (newPaths.length > 0 && minY < Infinity) {
-      setSvgTop(minY - 4);
-      setSvgHeight(maxY - minY + 8);
+      const verticalPadding = 12;
+      setSvgTop(minY - verticalPadding);
+      setSvgHeight(maxY - minY + verticalPadding * 2);
     }
     setPaths(newPaths);
   }, [relations, entities, entityRefs, containerRef]);
@@ -465,7 +466,14 @@ function RelationArrows({
       </defs>
       {paths.map((p) => (
         <g key={p.id}>
-          <path d={p.d} fill="none" stroke={p.color} strokeWidth="1.5" markerEnd={`url(#arr-${p.id})`} />
+          <path
+            d={p.d}
+            transform={`translate(0 ${-svgTop})`}
+            fill="none"
+            stroke={p.color}
+            strokeWidth="1.5"
+            markerEnd={`url(#arr-${p.id})`}
+          />
           <rect
             x={p.lx - p.label.length * 3.5}
             y={p.ly - svgTop - 9}
