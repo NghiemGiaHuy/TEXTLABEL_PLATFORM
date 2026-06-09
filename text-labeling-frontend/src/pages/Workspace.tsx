@@ -892,7 +892,7 @@ export default function Workspace() {
                     )}
                     <div className="px-4 sm:px-8 py-5 sm:py-7">
                       <p className="text-surface-800 whitespace-pre-wrap break-words"
-                        style={{ fontSize: 15, lineHeight: '2', fontFamily: 'Georgia, "Times New Roman", serif' }}>
+                        style={{ fontSize: 15, lineHeight: '2', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
                         {sampleData.content}
                       </p>
                     </div>
