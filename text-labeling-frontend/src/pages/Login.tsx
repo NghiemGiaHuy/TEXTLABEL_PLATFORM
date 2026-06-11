@@ -111,7 +111,7 @@ export default function Login() {
             <Tag className="w-7 h-7 text-white" strokeWidth={2.2} />
           </div>
           <h1 className="text-white text-2xl font-bold tracking-tight">
-            Text Labeling Platform
+            TextLabel Platform
           </h1>
           <p className="text-slate-400 text-sm mt-1">Annotation workspace</p>
         </div>
