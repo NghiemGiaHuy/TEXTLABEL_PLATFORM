@@ -287,18 +287,15 @@ export default function Login() {
 
         {/* Footer */}
         <div className="mt-4 text-center space-y-1.5">
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-white">
             Bằng cách đăng nhập, bạn đồng ý với{' '}
-            <button type="button" className="text-slate-500 hover:text-slate-400 underline underline-offset-2 transition-colors cursor-pointer">
+            <button type="button" className="text-white hover:text-slate-200 underline underline-offset-2 transition-colors cursor-pointer">
               Điều khoản sử dụng
             </button>
             {' '}·{' '}
-            <button type="button" className="text-slate-500 hover:text-slate-400 underline underline-offset-2 transition-colors cursor-pointer">
+            <button type="button" className="text-white hover:text-slate-200 underline underline-offset-2 transition-colors cursor-pointer">
               Chính sách bảo mật
             </button>
-          </p>
-          <p className="text-xs text-slate-700">
-            Text Labeling Platform v1.0
           </p>
         </div>
       </div>
