@@ -152,7 +152,7 @@ export default function Login() {
             {/* Email */}
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                Email / Tên đăng nhập
+                Email
               </label>
               <input
                 type="text"
