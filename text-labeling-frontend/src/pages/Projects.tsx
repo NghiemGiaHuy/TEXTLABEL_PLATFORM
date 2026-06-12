@@ -364,29 +364,19 @@ function ProjectCard({
   return (
     <Link
       to={`/projects/${project.id}`}
-      className="group block cursor-pointer transition-all duration-200"
+      className="block cursor-pointer"
       style={{
         background: '#ffffff',
         border: '1px solid #e2e8f0',
         borderRadius: '14px',
         boxShadow: '0 1px 3px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.04)',
       }}
-      onMouseEnter={(e) => {
-        const el = e.currentTarget as HTMLElement;
-        el.style.boxShadow = '0 8px 24px rgba(0,0,0,0.12)';
-        el.style.border = '2px solid #2563EB';
-      }}
-      onMouseLeave={(e) => {
-        const el = e.currentTarget as HTMLElement;
-        el.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.04)';
-        el.style.border = '1px solid #e2e8f0';
-      }}
     >
       <div className="p-5 relative">
         {/* Eye icon */}
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDetail(project); }}
-          className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-lg text-surface-700 border border-surface-300 bg-white hover:bg-surface-100 hover:border-surface-400 transition-all duration-150 z-10 cursor-pointer"
+          className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-lg text-surface-700 border border-surface-300 bg-white hover:bg-[#2563EB] hover:border-[#2563EB] hover:text-white transition-colors duration-150 z-10 cursor-pointer"
           title="Xem chi tiết"
         >
           <MoreHorizontal className="w-4 h-4" />
