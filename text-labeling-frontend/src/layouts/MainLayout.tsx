@@ -90,8 +90,7 @@ export default function MainLayout() {
             <Tag className="w-4 h-4 text-white" strokeWidth={2.5} />
           </div>
           <div className="leading-tight min-w-0">
-            <span className="text-sm font-semibold text-white block">TextLabel</span>
-            <span className="text-[10px] text-blue-300 uppercase tracking-wider font-medium">Platform</span>
+            <span className="text-sm font-semibold text-white block">TextLabel Pro</span>
           </div>
         </div>
 
