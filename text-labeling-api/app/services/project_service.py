@@ -307,17 +307,16 @@ class ProjectService:
     async def delete_project(self, project_id: UUID, current_user: User) -> None:
         """
         Delete a project.
-        Only allowed when project has no annotation data yet (computed status = not_started).
+        Only allowed when displayed annotation progress is 0% or 100%.
         """
         project = await self._get_project_or_404(project_id)
         await self._check_owner(project, current_user)
 
         stats_map = await self._fetch_sample_stats([project.id])
-        computed = self._compute_project_status(stats_map.get(project.id))
-        if computed != "not_started":
+        annotation_pct = self._get_display_annotation_progress_percent(stats_map.get(project.id))
+        if annotation_pct not in {0, 100}:
             raise ConflictException(
-                "Cannot delete a project that has annotation data. "
-                "Archive it instead."
+                "Chỉ có thể xóa dự án khi tiến độ annotation là 0% hoặc 100%."
             )
 
         self.db.add(
@@ -719,6 +718,26 @@ class ProjectService:
             return "completed"
         return "active"
 
+    @staticmethod
+    def _get_annotation_progress(stats) -> float:
+        if stats is None:
+            return 0.0
+
+        total_samples = int(getattr(stats, "total_samples", 0) or 0)
+        if total_samples <= 0:
+            return 0.0
+
+        annotated_samples = max(0, int(getattr(stats, "annotated_count", 0) or 0))
+        return max(
+            0.0,
+            min(100.0, round((annotated_samples / total_samples) * 100, 1)),
+        )
+
+    @classmethod
+    def _get_display_annotation_progress_percent(cls, stats) -> int:
+        progress = cls._get_annotation_progress(stats)
+        return int(math.floor(progress + 0.5))
+
     def _build_project_response(
         self,
         project: Project,
@@ -731,11 +750,7 @@ class ProjectService:
         pending_review_samples = int(getattr(stats, "submitted_count", 0) or 0)
         approved_samples = int(getattr(stats, "approved_count", 0) or 0)
         exported_samples = int(getattr(stats, "exported_count", 0) or 0)
-        annotation_progress = (
-            round((annotated_samples / total_samples) * 100, 1)
-            if total_samples > 0
-            else 0.0
-        )
+        annotation_progress = self._get_annotation_progress(stats)
         review_progress = (
             round((approved_samples / total_samples) * 100, 1)
             if total_samples > 0

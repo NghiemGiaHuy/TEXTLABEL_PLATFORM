@@ -130,7 +130,7 @@ async def delete_project(
     current_user: User = AdminOrPO,
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a project. Only allowed for Draft projects."""
+    """Delete a project when annotation progress is 0% or 100%."""
     service = ProjectService(db)
     await service.delete_project(project_id, current_user)
     return MessageResponse(message="Project deleted successfully")

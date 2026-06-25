@@ -62,6 +62,17 @@ const PROJECTS_ERROR_MESSAGE =
 
 const PROJECTS_STALE_WARNING =
   'Kh\u00f4ng c\u1eadp nh\u1eadt \u0111\u01b0\u1ee3c danh s\u00e1ch d\u1ef1 \u00e1n. \u0110ang gi\u1eef d\u1eef li\u1ec7u g\u1ea7n nh\u1ea5t.';
+const PROJECT_DELETE_PROGRESS_MESSAGE =
+  'Chỉ có thể xóa dự án khi tiến độ annotation là 0% hoặc 100%.';
+
+function getAnnotationProgressPercent(project: Project) {
+  return Math.max(0, Math.min(100, Math.round(project.annotation_progress ?? 0)));
+}
+
+function canDeleteProjectByAnnotationProgress(project: Project) {
+  const annotationPct = getAnnotationProgressPercent(project);
+  return annotationPct === 0 || annotationPct === 100;
+}
 
 function getProjectsErrorMessage(error: unknown) {
   const response = (error as ProjectsApiError).response;
@@ -174,13 +185,19 @@ export default function Projects() {
   const showBlockingError = Boolean(error && !hasProjectSnapshot);
   const showInlineWarning = Boolean(error && hasProjectSnapshot);
 
-  const handleDelete = async (projectId: string) => {
+  const handleDelete = async (project: Project) => {
+    if (!canDeleteProjectByAnnotationProgress(project)) {
+      showToast('error', PROJECT_DELETE_PROGRESS_MESSAGE);
+      return;
+    }
+
     if (!await confirm('Bạn có chắc muốn xóa dự án này?', { title: 'Xóa dự án', variant: 'danger', confirmText: 'Xóa' })) return;
     try {
-      await projectApi.deleteProject(projectId);
+      await projectApi.deleteProject(project.id);
       fetchProjects();
-    } catch {
-      showToast('error', 'Không xóa được dự án');
+    } catch (err: unknown) {
+      const response = (err as ProjectsApiError).response;
+      showToast('error', response?.data?.detail ?? 'Không xóa được dự án');
     }
   };
 
@@ -334,7 +351,7 @@ export default function Projects() {
         <ProjectDetailModal
           project={detailProject}
           onClose={() => setDetailProject(null)}
-          onDelete={async (id) => { setDetailProject(null); await handleDelete(id); }}
+          onDelete={async (projectToDelete) => { setDetailProject(null); await handleDelete(projectToDelete); }}
           onRefresh={fetchProjects}
         />
       )}
@@ -360,7 +377,7 @@ function ProjectCard({
 }) {
   const statusCfg = STATUS_CFG[project.status] ?? STATUS_CFG.not_started;
   const priorityCfg = PRIORITY_CFG[project.priority] ?? PRIORITY_CFG.normal;
-  const annotationPct = Math.max(0, Math.min(100, Math.round(project.annotation_progress ?? 0)));
+  const annotationPct = getAnnotationProgressPercent(project);
   return (
     <Link
       to={`/projects/${project.id}`}
@@ -456,7 +473,7 @@ function ProjectDetailModal({
 }: {
   project: Project;
   onClose: () => void;
-  onDelete: (id: string) => void;
+  onDelete: (project: Project) => void;
   onRefresh: () => void;
 }) {
   const navigate = useNavigate();
@@ -490,9 +507,10 @@ function ProjectDetailModal({
   const annotationDone = project.annotated_samples ?? 0;
   const reviewDone = (project.pending_review_samples ?? 0) + (project.approved_samples ?? 0);
   const approvedDone = project.approved_samples ?? 0;
-  const annPct = Math.max(0, Math.min(100, Math.round(project.annotation_progress ?? 0)));
+  const annPct = getAnnotationProgressPercent(project);
   const revPct = Math.max(0, Math.min(100, Math.round(project.review_progress ?? 0)));
   const appPct = Math.max(0, Math.min(100, Math.round(project.completion_progress ?? 0)));
+  const canDeleteProject = canDeleteProjectByAnnotationProgress(project);
 
   const statusCfg = STATUS_CFG[project.status] ?? STATUS_CFG.not_started;
 
@@ -688,8 +706,16 @@ function ProjectDetailModal({
             Lịch sử Export
           </button>
           <button
-            onClick={() => onDelete(project.id)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-sm font-semibold transition-colors cursor-pointer"
+            onClick={() => {
+              if (canDeleteProject) onDelete(project);
+            }}
+            disabled={!canDeleteProject}
+            title={canDeleteProject ? 'Xóa dự án' : PROJECT_DELETE_PROGRESS_MESSAGE}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-semibold transition-colors ${
+              canDeleteProject
+                ? 'border-red-200 text-red-600 hover:bg-red-50 cursor-pointer'
+                : 'border-surface-200 text-surface-400 bg-surface-50 cursor-not-allowed'
+            }`}
           >
             <Trash2 className="w-4 h-4" />
             Xóa
