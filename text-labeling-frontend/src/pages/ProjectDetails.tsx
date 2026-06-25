@@ -89,6 +89,15 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string; lab
   error:       { bg: 'bg-red-50',      text: 'text-red-700',     dot: 'bg-red-500',     label: 'Error' },
 };
 
+const MEMBER_ASSIGNED_TASK_DELETE_MESSAGE =
+  'Không thể xoá thành viên vì thành viên này đang được phân công task trong dự án.';
+
+function countAssignedTasksForMember(tasks: Task[], userId: string): number {
+  return tasks.filter(
+    (task) => task.assignee_id === userId || task.reviewer_id === userId
+  ).length;
+}
+
 function StatusBadge({ status }: { status: string }) {
   const s = STATUS_STYLES[status] || STATUS_STYLES.not_started;
   return (
@@ -601,6 +610,11 @@ function OverviewTab({
   const canAddMembers = isAdmin || isProjectOwner;
 
   const handleRemoveMember = async (m: ProjectMember) => {
+    if (countAssignedTasksForMember(tasks, m.user_id) > 0) {
+      showToast('error', MEMBER_ASSIGNED_TASK_DELETE_MESSAGE);
+      return;
+    }
+
     if (!await confirm(`Xoá thành viên "${m.full_name}" khỏi dự án?`, { title: 'Xóa thành viên', variant: 'danger', confirmText: 'Xóa' })) return;
     try {
       await taskApi.removeMember(projectId, m.user_id);
@@ -779,6 +793,8 @@ function OverviewTab({
             </thead>
             <tbody className="divide-y divide-surface-100">
               {members.map((m) => {
+                const assignedTaskCount = countAssignedTasksForMember(tasks, m.user_id);
+                const canRemoveMember = assignedTaskCount === 0;
                 return (
                 <tr key={m.id} className="hover:bg-surface-50/50 transition-colors">
                   <td className="px-5 py-3.5">
@@ -809,8 +825,17 @@ function OverviewTab({
                         </button>
                         <button
                           onClick={() => handleRemoveMember(m)}
-                          className="p-1.5 rounded-lg text-surface-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
-                          title="Xóa thành viên"
+                          disabled={!canRemoveMember}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            canRemoveMember
+                              ? 'text-surface-400 hover:text-red-600 hover:bg-red-50 cursor-pointer'
+                              : 'text-surface-300 cursor-not-allowed'
+                          }`}
+                          title={
+                            canRemoveMember
+                              ? 'Xóa thành viên'
+                              : `${MEMBER_ASSIGNED_TASK_DELETE_MESSAGE} (${assignedTaskCount} task)`
+                          }
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

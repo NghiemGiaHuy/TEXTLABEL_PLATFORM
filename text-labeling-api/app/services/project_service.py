@@ -498,6 +498,8 @@ class ProjectService:
         if member.role_in_project == ProjectRole.PROJECT_OWNER:
             await self._guard_last_owner(project_id, user_id)
 
+        await self._guard_member_has_no_assigned_tasks(project_id, user_id)
+
         self.db.add(
             AuditLog(
                 user_id=current_user.id,
@@ -567,6 +569,27 @@ class ProjectService:
             raise BadRequestException(
                 "Cannot remove the last project owner. "
                 "Assign another owner first."
+            )
+
+    async def _guard_member_has_no_assigned_tasks(
+        self, project_id: UUID, user_id: UUID
+    ) -> None:
+        """Prevent removing members who are assigned to project tasks."""
+        result = await self.db.execute(
+            select(func.count(Task.id)).where(
+                and_(
+                    Task.project_id == project_id,
+                    or_(
+                        Task.assignee_id == user_id,
+                        Task.reviewer_id == user_id,
+                    ),
+                )
+            )
+        )
+        assigned_task_count = result.scalar() or 0
+        if assigned_task_count > 0:
+            raise ConflictException(
+                "Không thể xoá thành viên vì thành viên này đang được phân công task trong dự án."
             )
 
     async def _generate_unique_code(self) -> str:

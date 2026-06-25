@@ -218,7 +218,7 @@ async def remove_member(
     current_user: User = AdminOrPO,
     db: AsyncSession = Depends(get_db),
 ):
-    """Remove a member from the project."""
+    """Remove a member from the project if they have no assigned tasks."""
     service = ProjectService(db)
     await service.remove_member(
         project_id=project_id,
