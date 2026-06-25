@@ -133,6 +133,51 @@ function ToggleSwitch({
 
 // ─── Tab: Profile ───────────────────────────────────────────────
 
+const FULL_NAME_ERROR = 'Họ và tên chỉ được chứa chữ cái và khoảng trắng, độ dài từ 2 đến 100 ký tự.';
+const AVATAR_URL_ERROR = 'Avatar URL phải là đường dẫn ảnh công khai hợp lệ và có định dạng JPG, PNG hoặc WebP.';
+const FULL_NAME_PATTERN = /^[\p{L}\p{M} '-]+$/u;
+const AVATAR_IMAGE_PATTERN = /\.(jpe?g|png|webp)(?:[?#].*)?$/i;
+
+function isPrivateOrLocalHost(hostname: string) {
+  const host = hostname.toLowerCase();
+  if (!host || host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (host === '::1' || host === '[::1]') return true;
+  if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host)) return true;
+
+  const match172 = host.match(/^172\.(\d{1,3})\./);
+  if (match172) {
+    const secondOctet = Number(match172[1]);
+    if (secondOctet >= 16 && secondOctet <= 31) return true;
+  }
+
+  return false;
+}
+
+function validateFullName(value: string) {
+  const name = value.trim();
+  if (name.length < 2 || name.length > 100) return FULL_NAME_ERROR;
+  if (!/[\p{L}]/u.test(name)) return FULL_NAME_ERROR;
+  if (!FULL_NAME_PATTERN.test(name)) return FULL_NAME_ERROR;
+  return '';
+}
+
+function validateAvatarUrl(value: string) {
+  const url = value.trim();
+  if (!url) return '';
+  if (url.length > 1000) return AVATAR_URL_ERROR;
+
+  try {
+    const parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return AVATAR_URL_ERROR;
+    if (isPrivateOrLocalHost(parsed.hostname)) return AVATAR_URL_ERROR;
+    if (!AVATAR_IMAGE_PATTERN.test(parsed.pathname)) return AVATAR_URL_ERROR;
+  } catch {
+    return AVATAR_URL_ERROR;
+  }
+
+  return '';
+}
+
 function NotifRow({
   label,
   desc,
@@ -161,6 +206,7 @@ function ProfileTab() {
   const { showToast } = useToast();
   const [fullName, setFullName] = useState(user?.full_name || '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '');
+  const [profileErrors, setProfileErrors] = useState({ fullName: '', avatarUrl: '' });
   const [avatarPreviewOk, setAvatarPreviewOk] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -168,9 +214,20 @@ function ProfileTab() {
     .split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
 
   const roleDisplay = getRoleDisplay(user?.roles || []);
+  const hasProfileValidationError = Boolean(profileErrors.fullName || profileErrors.avatarUrl);
 
   const handleSave = async () => {
-    if (!fullName.trim()) { showToast('error', 'Tên không được để trống'); return; }
+    const nextErrors = {
+      fullName: validateFullName(fullName),
+      avatarUrl: validateAvatarUrl(avatarUrl),
+    };
+
+    setProfileErrors(nextErrors);
+    if (nextErrors.fullName || nextErrors.avatarUrl) {
+      showToast('error', nextErrors.fullName || nextErrors.avatarUrl);
+      return;
+    }
+
     setSaving(true);
     try {
       const updated = await authApi.updateProfile({
@@ -265,10 +322,28 @@ function ProfileTab() {
           <input
             type="text"
             value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              setFullName(value);
+              setProfileErrors((errors) => ({ ...errors, fullName: validateFullName(value) }));
+            }}
+            onBlur={() => setProfileErrors((errors) => ({ ...errors, fullName: validateFullName(fullName) }))}
+            maxLength={100}
+            aria-invalid={Boolean(profileErrors.fullName)}
+            aria-describedby={profileErrors.fullName ? 'full-name-error' : undefined}
             placeholder="Nhập tên hiển thị..."
-            className="w-full px-3.5 py-2.5 rounded-xl border border-surface-200 text-sm text-surface-800 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-brand-400 transition-all"
+            className={`w-full px-3.5 py-2.5 rounded-xl border text-sm text-surface-800 focus:outline-none focus:ring-2 transition-all ${
+              profileErrors.fullName
+                ? 'border-red-300 focus:ring-red-200 focus:border-red-400'
+                : 'border-surface-200 focus:ring-brand-300 focus:border-brand-400'
+            }`}
           />
+          {profileErrors.fullName && (
+            <p id="full-name-error" className="mt-1.5 flex items-start gap-1.5 text-[11px] text-red-600">
+              <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
+              <span>{profileErrors.fullName}</span>
+            </p>
+          )}
         </div>
 
         <div>
@@ -277,11 +352,24 @@ function ProfileTab() {
             <input
               type="url"
               value={avatarUrl}
-              onChange={(e) => { setAvatarUrl(e.target.value); setAvatarPreviewOk(false); }}
+              onChange={(e) => {
+                const value = e.target.value;
+                setAvatarUrl(value);
+                setAvatarPreviewOk(false);
+                setProfileErrors((errors) => ({ ...errors, avatarUrl: validateAvatarUrl(value) }));
+              }}
+              onBlur={() => setProfileErrors((errors) => ({ ...errors, avatarUrl: validateAvatarUrl(avatarUrl) }))}
+              maxLength={1000}
+              aria-invalid={Boolean(profileErrors.avatarUrl)}
+              aria-describedby={profileErrors.avatarUrl ? 'avatar-url-error' : 'avatar-url-hint'}
               placeholder="https://... (để trống dùng initials)"
-              className="flex-1 px-3.5 py-2.5 rounded-xl border border-surface-200 text-sm text-surface-800 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-brand-400 transition-all"
+              className={`flex-1 px-3.5 py-2.5 rounded-xl border text-sm text-surface-800 focus:outline-none focus:ring-2 transition-all ${
+                profileErrors.avatarUrl
+                  ? 'border-red-300 focus:ring-red-200 focus:border-red-400'
+                  : 'border-surface-200 focus:ring-brand-300 focus:border-brand-400'
+              }`}
             />
-            {avatarUrl && (
+            {avatarUrl && !profileErrors.avatarUrl && (
               <img
                 src={avatarUrl}
                 alt=""
@@ -291,13 +379,22 @@ function ProfileTab() {
               />
             )}
           </div>
-          <p className="text-[11px] text-surface-400 mt-1">Nhập URL ảnh công khai (JPG, PNG, WebP)</p>
+          {profileErrors.avatarUrl ? (
+            <p id="avatar-url-error" className="mt-1.5 flex items-start gap-1.5 text-[11px] text-red-600">
+              <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
+              <span>{profileErrors.avatarUrl}</span>
+            </p>
+          ) : (
+            <p id="avatar-url-hint" className="text-[11px] text-surface-400 mt-1">
+              Nhập URL ảnh công khai (JPG, PNG, WebP). Ưu tiên https://.
+            </p>
+          )}
         </div>
 
         <div className="pt-1">
           <button
             onClick={handleSave}
-            disabled={saving || !fullName.trim()}
+            disabled={saving || hasProfileValidationError}
             className="btn-primary flex items-center gap-2 text-sm disabled:opacity-50"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
