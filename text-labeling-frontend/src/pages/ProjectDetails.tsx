@@ -295,6 +295,12 @@ export default function ProjectDetails() {
   }, [fetchAll]);
 
   useEffect(() => {
+    if (!hasProjectSnapshotRef.current) return;
+    if (!['assign', 'tasks', 'reviews', 'completed_tasks'].includes(activeTab)) return;
+    void fetchAll({ silent: true });
+  }, [activeTab, fetchAll]);
+
+  useEffect(() => {
     if (activeTab !== 'datasets') return;
     void refreshDatasets();
     const refreshWhenVisible = () => {
@@ -2405,25 +2411,6 @@ function AssignTab({
   const getAssignmentStatus = (task: Task) =>
     normalizeStatus(task.assignment_status ?? task.status);
 
-  const isInProgressSampleStatus = (status?: string | null) =>
-    ['annotated', 'in_progress'].includes(normalizeStatus(status));
-
-  const getAssignmentTaskDisplayStatus = (
-    task: Pick<Task, 'sample_status_counts' | 'status' | 'task_status'>
-  ) => {
-    const counts = task.sample_status_counts ?? {};
-    const hasInProgressSample = Object.entries(counts).some(
-      ([status, count]) => isInProgressSampleStatus(status) && count > 0
-    );
-    return hasInProgressSample ? 'in_progress' : 'not_started';
-  };
-
-  const getAssignmentTaskDetailDisplayStatus = (task: TaskDetail) =>
-    task.task_samples?.some((sample) => isInProgressSampleStatus(sample.status))
-      ? 'in_progress'
-      : getAssignmentTaskDisplayStatus(task);
-
-
   const isNotStartedAssignment = (task: Task) =>
     ['not_started', 'todo', 'draft', 'pending'].includes(getAssignmentStatus(task));
 
@@ -2808,7 +2795,7 @@ function AssignTab({
                         <div className="flex flex-col gap-3">
                           {group.tasks.map((item) => (
                             <div key={item.id} className="flex min-h-[64px] items-center">
-                              <StatusBadge status={getAssignmentTaskDisplayStatus(item)} />
+                              <StatusBadge status={getAnnotateTaskWorkStatus(item)} />
                             </div>
                           ))}
                         </div>
@@ -2890,7 +2877,7 @@ function AssignTab({
                       : <Tag className="w-3 h-3" />}
                     {getAnnotationLabel(detailTask)}
                   </span>
-                  <StatusBadge status={getAssignmentTaskDetailDisplayStatus(detailTask)} />
+                  <StatusBadge status={getAnnotateTaskWorkStatus(detailTask)} />
                 </div>
               </div>
               <div className="text-right">
