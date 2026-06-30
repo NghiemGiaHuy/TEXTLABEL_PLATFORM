@@ -599,6 +599,7 @@ export default function Users() {
       <EditUserModal
         user={editingUser}
         isOpen={!!editingUser}
+        currentUserId={currentUser?.id}
         onClose={() => setEditingUser(null)}
         onSaved={() => {
           setEditingUser(null);
@@ -642,11 +643,15 @@ function RoleOptionGrid({
   selectedRoles,
   onToggle,
   selectionMode = 'multiple',
+  disabled = false,
+  disabledReason,
 }: {
   roles: Role[];
   selectedRoles: string[];
   onToggle: (roleId: string) => void;
   selectionMode?: 'single' | 'multiple';
+  disabled?: boolean;
+  disabledReason?: string;
 }) {
   return (
     <div
@@ -658,20 +663,25 @@ function RoleOptionGrid({
         const isSelected = selectedRoles.includes(role.id);
         const style = ROLE_STYLES[roleName] || ROLE_STYLES.annotator;
         const Icon = style.icon;
+        const idleClass = disabled
+          ? 'border-surface-200 text-surface-400 bg-surface-50'
+          : 'border-surface-200 text-surface-600 hover:border-surface-300 hover:bg-surface-50';
 
         return (
           <button
             key={role.id}
             type="button"
             onClick={() => onToggle(role.id)}
+            disabled={disabled}
+            title={disabled ? disabledReason : undefined}
             role={selectionMode === 'single' ? 'radio' : undefined}
             aria-checked={selectionMode === 'single' ? isSelected : undefined}
             aria-pressed={selectionMode === 'multiple' ? isSelected : undefined}
             className={`flex items-center gap-2.5 p-3 rounded-lg border-2 text-left transition-all duration-150 ${
               isSelected
                 ? `${style.bg} border-current ${style.text}`
-                : 'border-surface-200 text-surface-600 hover:border-surface-300 hover:bg-surface-50'
-            } cursor-pointer`}
+                : idleClass
+            } ${disabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
           >
             <Icon className="w-4 h-4 shrink-0" />
             <span className="text-sm font-medium">
@@ -881,11 +891,13 @@ function CreateUserModal({
 function EditUserModal({
   user,
   isOpen,
+  currentUserId,
   onClose,
   onSaved,
 }: {
   user: AdminUser | null;
   isOpen: boolean;
+  currentUserId?: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -894,6 +906,7 @@ function EditUserModal({
   const [roles, setRoles] = useState<Role[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const isSelf = !!user && user.id === currentUserId;
 
   useEffect(() => {
     if (!isOpen || !user) return;
@@ -916,18 +929,25 @@ function EditUserModal({
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    if (!fullName.trim() || selectedRoles.length === 0) {
-      setError('Vui lòng nhập họ tên và chọn một vai trò.');
+    if (!fullName.trim()) {
+      setError('Vui lòng nhập họ tên.');
+      return;
+    }
+    if (!isSelf && selectedRoles.length === 0) {
+      setError('Vui lòng chọn một vai trò.');
       return;
     }
 
     setSubmitting(true);
     setError('');
     try {
-      await userApi.updateUser(user.id, {
+      const payload: { full_name: string; role_ids?: string[] } = {
         full_name: fullName.trim(),
-        role_ids: selectedRoles,
-      });
+      };
+      if (!isSelf) {
+        payload.role_ids = selectedRoles;
+      }
+      await userApi.updateUser(user.id, payload);
       onSaved();
     } catch (err: unknown) {
       setError(getErrorMessage(err, 'Không cập nhật được người dùng'));
@@ -970,6 +990,8 @@ function EditUserModal({
             selectedRoles={selectedRoles}
             onToggle={toggleRole}
             selectionMode="single"
+            disabled={isSelf}
+            disabledReason="Không thể đổi vai trò của chính bạn."
           />
         </div>
 
@@ -979,7 +1001,7 @@ function EditUserModal({
           </button>
           <button
             type="submit"
-            disabled={submitting || selectedRoles.length === 0}
+            disabled={submitting || (!isSelf && selectedRoles.length === 0)}
             className="btn-primary"
           >
             {submitting ? (

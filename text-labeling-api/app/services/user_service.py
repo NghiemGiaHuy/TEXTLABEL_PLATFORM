@@ -225,6 +225,7 @@ class UserService:
 
         Business Rules:
         - E1: Cannot remove the last Admin role from the system
+        - Admins cannot change their own Admin role
         - role_ids replaces ALL existing roles (full replacement)
         """
         user = await self._get_user_or_404(user_id)
@@ -237,8 +238,10 @@ class UserService:
         changes = {}
         if role_ids is not None:
             new_roles = await self._validate_role_ids(role_ids)
-            new_role_names = {r.name for r in new_roles}
+            new_role_names = {self._role_name_value(r.name) for r in new_roles}
 
+            # Guard: an admin cannot change roles on their own account
+            self._guard_self_admin_role_change(user, admin_id, new_role_names)
             # Guard: cannot remove the last admin
             await self._guard_last_admin(user, new_role_names)
 
@@ -573,14 +576,34 @@ class UserService:
 
         return list(found_roles)
 
-    async def _guard_last_admin(self, user: User, new_role_names: set) -> None:
+    def _role_name_value(self, role_name: RoleName | str) -> str:
+        """Return a stable string value for RoleName enum/string inputs."""
+        return role_name.value if hasattr(role_name, "value") else str(role_name)
+
+    def _guard_self_admin_role_change(
+        self, user: User, admin_id: UUID, new_role_names: set[str]
+    ) -> None:
+        """Prevent admins from changing roles on their own account."""
+        if user.id != admin_id:
+            return
+
+        current_role_names = {
+            self._role_name_value(role_name) for role_name in user.role_names
+        }
+
+        if current_role_names != new_role_names:
+            raise BadRequestException("Cannot change your own administrator role")
+
+    async def _guard_last_admin(self, user: User, new_role_names: set[str]) -> None:
         """
         Prevent removing Admin role if this is the last admin in the system.
 
         UC-2.2 E1: "Không thể bỏ vai trò Admin cuối cùng: hệ thống chặn."
         """
-        current_is_admin = RoleName.ADMIN.value in user.role_names
-        new_has_admin = RoleName.ADMIN in new_role_names
+        current_is_admin = RoleName.ADMIN.value in {
+            self._role_name_value(role_name) for role_name in user.role_names
+        }
+        new_has_admin = RoleName.ADMIN.value in new_role_names
 
         if current_is_admin and not new_has_admin:
             # Count other admins (excluding this user)
