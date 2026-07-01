@@ -976,16 +976,16 @@ function DataTypeTab() {
                 color: 'bg-blue-100 text-blue-700',
               },
               {
-                badge: '≡',
-                label: 'Text Span',
-                desc: 'Đánh dấu đoạn văn bản theo vị trí ký tự (start_offset – end_offset).',
-                color: 'bg-purple-100 text-purple-700',
-              },
-              {
                 badge: '◈',
                 label: 'Text Classification',
                 desc: 'Phân loại cảm xúc, chủ đề, ý định của toàn bộ văn bản.',
                 color: 'bg-amber-100 text-amber-700',
+              },
+              {
+                badge: 'RE',
+                label: 'Relation Extraction',
+                desc: 'Xác định mối quan hệ giữa các thực thể trong văn bản.',
+                color: 'bg-emerald-100 text-emerald-700',
               },
             ].map((item) => (
               <div key={item.label} className="flex items-start gap-3">
