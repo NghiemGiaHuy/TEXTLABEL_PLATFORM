@@ -1303,7 +1303,7 @@ function DatasetSamplesModal({
 }
 
 // ─────────────────────────────────────────────────────────────
-// TASKS TAB
+// ANNOTATE TAB
 // ─────────────────────────────────────────────────────────────
 function TasksTab({
   tasks,
@@ -5846,7 +5846,6 @@ const FORMAT_OPTIONS = [
 
 const FILTER_OPTIONS = [
   { value: 'approved_only' as const, label: 'Chỉ task đã Approved (khuyến nghị)' },
-  { value: 'all' as const, label: 'Toàn bộ task (kể cả chưa hoàn thành)' },
   { value: 'by_dataset' as const, label: 'Theo một dataset cụ thể' },
 ];
 
@@ -5870,7 +5869,7 @@ function ExportModal({
 }) {
   const [creating, setCreating] = useState(false);
   const [format, setFormat] = useState<'json' | 'jsonl' | 'csv'>('json');
-  const [filterMode, setFilterMode] = useState<'approved_only' | 'all' | 'by_dataset'>('approved_only');
+  const [filterMode, setFilterMode] = useState<'approved_only' | 'by_dataset'>('approved_only');
   const [selectedDatasetId, setSelectedDatasetId] = useState('');
   const [error, setError] = useState('');
 
